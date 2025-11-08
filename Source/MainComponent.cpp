@@ -87,16 +87,16 @@ MainComponent::MainComponent()
 
     pitchKnob.setLookAndFeel (&customLookAndFeel);
 
-    // REAL-TIME pitch shifting with SoundTouch (pitch ONLY, tempo unchanged)
+    // REAL-TIME pitch shifting with ResamplingAudioSource (turntable-style)
     pitchKnob.onValueChange = [this] {
         float semitones = pitchKnob.getValue();
         currentPitchSemitones = semitones;
 
-        // Update SoundTouch pitch shifter in REAL-TIME (smooth, flutter-free!)
+        // Update resampling ratio in REAL-TIME (smooth, click-free!)
         if (pitchShifter != nullptr)
             pitchShifter->setPitchSemitones (semitones);
 
-        DBG("Pitch: " << semitones << " semitones - REAL-TIME SoundTouch");
+        DBG("Pitch: " << semitones << " semitones - REAL-TIME ResamplingAudioSource");
     };
 
     addAndMakeVisible (pitchKnob);
@@ -549,18 +549,19 @@ void MainComponent::loadTrack (int index)
     {
         readerSource.reset (new juce::AudioFormatReaderSource (reader, true));
 
-        // Wrap reader source in SoundTouch pitch shifter for clean real-time pitch shifting
-        pitchShifter.reset (new SoundTouchPitchShifter (readerSource.get(), false));
+        // Wrap reader source in ResamplingAudioSource for smooth, click-free pitch shifting
+        pitchShifter.reset (new SmoothResamplingSource (readerSource.get(), false));
+        pitchShifter->prepareToPlay (512, reader->sampleRate);
         pitchShifter->setPitchSemitones (currentPitchSemitones);  // Start at 0 (normal pitch)
 
-        // Connect pitch shifter to transport
+        // Connect pitch shifter to transport (now implements PositionableAudioSource)
         transportSource.setSource (pitchShifter.get(), 0, nullptr, reader->sampleRate);
 
         currentTrackIndex = index;
         currentTrackName = file.getFileNameWithoutExtension();
         trackNameLabel.setText (currentTrackName, juce::dontSendNotification);
 
-        DBG ("Loaded: " << currentTrackName << " with SoundTouch pitch shifter (0 semitones)");
+        DBG ("Loaded: " << currentTrackName << " with ResamplingAudioSource (0 semitones)");
     }
 }
 
