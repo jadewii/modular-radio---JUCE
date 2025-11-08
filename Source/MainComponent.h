@@ -5,41 +5,78 @@
 #include "ModularRadioLookAndFeel.h"
 
 //==============================================================================
-// Varispeed audio source for smooth real-time pitch/tempo changes (DJ-style)
-class VarispeedAudioSource : public juce::PositionableAudioSource
+// SoundTouch-based pitch shifter with FIFO buffer for click-free operation
+class SoundTouchPitchShifter : public juce::PositionableAudioSource
 {
 public:
-    VarispeedAudioSource (juce::PositionableAudioSource* inputSource, bool deleteSourceWhenDeleted)
+    SoundTouchPitchShifter (juce::PositionableAudioSource* inputSource, bool deleteSourceWhenDeleted)
         : source (inputSource), deleteSource (deleteSourceWhenDeleted)
     {
+        // Initialize SoundTouch with high-quality settings to eliminate flutter
+        soundTouch.setSampleRate (44100);
+        soundTouch.setChannels (2);
+
+        // CRITICAL SETTINGS FOR ELIMINATING FLUTTER:
+        // Longer overlap = smoother crossfading = less flutter
+        soundTouch.setSetting (SETTING_OVERLAP_MS, 12);  // Longer overlap for smoother processing
+
+        // Longer sequence = less frequent transitions = smoother
+        soundTouch.setSetting (SETTING_SEQUENCE_MS, 82);  // Longer sequences
+
+        // Seek window for finding best overlap match
+        soundTouch.setSetting (SETTING_SEEKWINDOW_MS, 28);
+
+        // Use best quality settings
+        soundTouch.setSetting (SETTING_USE_QUICKSEEK, 0);  // Disable quick seek for best quality
+        soundTouch.setSetting (SETTING_USE_AA_FILTER, 1);  // Enable anti-alias filter
     }
 
-    ~VarispeedAudioSource() override
+    ~SoundTouchPitchShifter() override
     {
         if (deleteSource)
             delete source;
     }
 
-    void setPlaybackRate (double newRate)
+    void setPitchSemitones (double semitones)
     {
-        playbackRate = juce::jlimit (0.5, 2.0, newRate);  // Limit to reasonable range
+        // Smooth pitch changes to avoid clicks
+        smoothedPitch.setTargetValue (juce::jlimit (-12.0, 12.0, semitones));
     }
 
     void prepareToPlay (int samplesPerBlockExpected, double sampleRate) override
     {
         if (source != nullptr)
-            source->prepareToPlay (static_cast<int>(samplesPerBlockExpected * 2.0 + 10), sampleRate);
+            source->prepareToPlay (samplesPerBlockExpected * 3, sampleRate);  // Extra for buffering
 
         this->sampleRate = sampleRate;
-        interpolatorL.reset();
-        interpolatorR.reset();
-        tempBuffer.setSize (2, static_cast<int>(samplesPerBlockExpected * 2.0 + 10));
+        soundTouch.setSampleRate (static_cast<uint> (sampleRate));
+        soundTouch.clear();
+
+        // Initialize pitch smoothing (5ms ramp to avoid clicks when changing pitch)
+        smoothedPitch.reset (sampleRate, 0.005);
+        smoothedPitch.setCurrentAndTargetValue (0.0);
+
+        inputBuffer.setSize (2, samplesPerBlockExpected * 3);
+
+        // FIFO buffer for click-free output (large enough to handle SoundTouch latency)
+        int fifoSize = samplesPerBlockExpected * 8;
+        fifoBuffer.setSize (2, fifoSize);
+        fifoBuffer.clear();
+        abstractFifo.setTotalSize (fifoSize);
+
+        // Pre-allocate interleaved buffers (larger for extra buffering)
+        interleavedInput.resize (samplesPerBlockExpected * 3 * 2);
+        interleavedOutput.resize (samplesPerBlockExpected * 3 * 2);
+
+        needsPriming = true;
     }
 
     void releaseResources() override
     {
         if (source != nullptr)
             source->releaseResources();
+
+        soundTouch.clear();
     }
 
     void getNextAudioBlock (const juce::AudioSourceChannelInfo& bufferToFill) override
@@ -50,45 +87,119 @@ public:
             return;
         }
 
-        auto rate = playbackRate;
+        auto pitch = smoothedPitch.getNextValue();
 
-        if (std::abs (rate - 1.0) < 0.001)
+        // Pass through if no pitch shift
+        if (std::abs (pitch) < 0.01)
         {
-            // No pitch shift - pass through
             source->getNextAudioBlock (bufferToFill);
+            needsPriming = false;
             return;
         }
 
-        // Calculate how many input samples we need for the requested output
-        auto numOutputSamples = bufferToFill.numSamples;
-        auto numInputSamples = static_cast<int> (numOutputSamples * rate) + 10;  // Extra for interpolation
-
-        tempBuffer.setSize (2, numInputSamples, false, false, true);
-
-        juce::AudioSourceChannelInfo tempInfo;
-        tempInfo.buffer = &tempBuffer;
-        tempInfo.startSample = 0;
-        tempInfo.numSamples = numInputSamples;
-
-        source->getNextAudioBlock (tempInfo);
-
-        // Resample using Lagrange interpolation (high quality, smooth)
-        auto ratio = 1.0 / rate;  // Input samples per output sample
-
-        auto numChannels = juce::jmin (bufferToFill.buffer->getNumChannels(), 2);
-
-        for (int ch = 0; ch < numChannels; ++ch)
+        // PRIME SOUNDTOUCH: Feed extra samples initially to fill internal buffer
+        if (needsPriming)
         {
-            auto* inputData = tempBuffer.getReadPointer (ch);
-            auto* outputData = bufferToFill.buffer->getWritePointer (ch, bufferToFill.startSample);
+            // Feed 4 blocks worth of samples to prime SoundTouch
+            for (int i = 0; i < 4; ++i)
+            {
+                juce::AudioSourceChannelInfo primeInfo;
+                primeInfo.buffer = &inputBuffer;
+                primeInfo.startSample = 0;
+                primeInfo.numSamples = bufferToFill.numSamples;
+                source->getNextAudioBlock (primeInfo);
 
-            auto& interpolator = (ch == 0) ? interpolatorL : interpolatorR;
-            interpolator.process (ratio, inputData, outputData, numOutputSamples);
+                // Interleave and feed to SoundTouch
+                int idx = 0;
+                for (int s = 0; s < bufferToFill.numSamples; ++s)
+                {
+                    interleavedInput[idx++] = inputBuffer.getSample (0, s);
+                    interleavedInput[idx++] = inputBuffer.getSample (1, s);
+                }
+                soundTouch.putSamples (interleavedInput.data(), bufferToFill.numSamples);
+            }
+            needsPriming = false;
         }
 
-        // Clear any extra channels
-        for (int ch = numChannels; ch < bufferToFill.buffer->getNumChannels(); ++ch)
-            bufferToFill.buffer->clear (ch, bufferToFill.startSample, bufferToFill.numSamples);
+        // Update pitch (smoothed for click-free transitions)
+        soundTouch.setPitchSemiTones (pitch);
+
+        // STEP 1: Feed more input to SoundTouch
+        int samplesToRead = bufferToFill.numSamples * 2;  // Feed 2x to ensure we get enough output
+        juce::AudioSourceChannelInfo inputInfo;
+        inputInfo.buffer = &inputBuffer;
+        inputInfo.startSample = 0;
+        inputInfo.numSamples = juce::jmin (samplesToRead, inputBuffer.getNumSamples());
+        source->getNextAudioBlock (inputInfo);
+
+        // Interleave for SoundTouch
+        int idx = 0;
+        for (int i = 0; i < inputInfo.numSamples; ++i)
+        {
+            interleavedInput[idx++] = inputBuffer.getSample (0, i);
+            interleavedInput[idx++] = inputBuffer.getSample (1, i);
+        }
+        soundTouch.putSamples (interleavedInput.data(), inputInfo.numSamples);
+
+        // STEP 2: Receive processed samples from SoundTouch
+        auto receivedSamples = soundTouch.receiveSamples (interleavedOutput.data(),
+                                                          interleavedOutput.size() / 2);
+
+        // STEP 3: Write received samples to FIFO buffer
+        if (receivedSamples > 0)
+        {
+            auto scope = abstractFifo.write (receivedSamples);
+            if (scope.blockSize1 > 0)
+            {
+                for (int i = 0; i < scope.blockSize1; ++i)
+                {
+                    fifoBuffer.setSample (0, scope.startIndex1 + i, interleavedOutput[i * 2]);
+                    fifoBuffer.setSample (1, scope.startIndex1 + i, interleavedOutput[i * 2 + 1]);
+                }
+            }
+            if (scope.blockSize2 > 0)
+            {
+                for (int i = 0; i < scope.blockSize2; ++i)
+                {
+                    fifoBuffer.setSample (0, scope.startIndex2 + i,
+                                         interleavedOutput[(scope.blockSize1 + i) * 2]);
+                    fifoBuffer.setSample (1, scope.startIndex2 + i,
+                                         interleavedOutput[(scope.blockSize1 + i) * 2 + 1]);
+                }
+            }
+        }
+
+        // STEP 4: Read from FIFO buffer to output (NEVER output zeros!)
+        auto numAvailable = abstractFifo.getNumReady();
+        auto numToRead = juce::jmin (bufferToFill.numSamples, numAvailable);
+
+        if (numToRead > 0)
+        {
+            auto scope = abstractFifo.read (numToRead);
+            if (scope.blockSize1 > 0)
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    bufferToFill.buffer->copyFrom (ch, bufferToFill.startSample,
+                                                   fifoBuffer, ch, scope.startIndex1, scope.blockSize1);
+            }
+            if (scope.blockSize2 > 0)
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    bufferToFill.buffer->copyFrom (ch, bufferToFill.startSample + scope.blockSize1,
+                                                   fifoBuffer, ch, scope.startIndex2, scope.blockSize2);
+            }
+        }
+
+        // If FIFO didn't have enough, repeat last sample to avoid clicks
+        if (numToRead < bufferToFill.numSamples)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                auto lastSample = bufferToFill.buffer->getSample (ch, bufferToFill.startSample + numToRead - 1);
+                for (int i = numToRead; i < bufferToFill.numSamples; ++i)
+                    bufferToFill.buffer->setSample (ch, bufferToFill.startSample + i, lastSample);
+            }
+        }
     }
 
     // PositionableAudioSource methods
@@ -97,8 +208,10 @@ public:
         if (source != nullptr)
             source->setNextReadPosition (newPosition);
 
-        interpolatorL.reset();
-        interpolatorR.reset();
+        soundTouch.clear();
+        abstractFifo.reset();
+        fifoBuffer.clear();
+        needsPriming = true;  // Re-prime after seek
     }
 
     juce::int64 getNextReadPosition() const override
@@ -119,12 +232,24 @@ public:
 private:
     juce::PositionableAudioSource* source;
     bool deleteSource;
-    double playbackRate = 1.0;
     double sampleRate = 44100.0;
-    juce::LagrangeInterpolator interpolatorL, interpolatorR;
-    juce::AudioBuffer<float> tempBuffer;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VarispeedAudioSource)
+    // Smooth pitch changes to avoid clicks
+    juce::LinearSmoothedValue<double> smoothedPitch;
+
+    soundtouch::SoundTouch soundTouch;
+    juce::AudioBuffer<float> inputBuffer;
+
+    // FIFO buffer for click-free output
+    juce::AbstractFifo abstractFifo { 4096 };
+    juce::AudioBuffer<float> fifoBuffer;
+
+    std::vector<float> interleavedInput;
+    std::vector<float> interleavedOutput;
+
+    bool needsPriming = true;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundTouchPitchShifter)
 };
 
 //==============================================================================
@@ -226,9 +351,9 @@ private:
     // Audio playback
     juce::AudioFormatManager formatManager;
     std::unique_ptr<juce::AudioFormatReaderSource> readerSource;
-    std::unique_ptr<VarispeedAudioSource> varispeedSource;  // Real-time pitch/tempo control
+    std::unique_ptr<SoundTouchPitchShifter> pitchShifter;  // Real-time pitch shifting with SoundTouch
     juce::AudioTransportSource transportSource;
-    double currentPitchRatio = 1.0;  // Turntable-style pitch control (affects pitch + tempo)
+    double currentPitchSemitones = 0.0;  // Current pitch in semitones
 
     // Track management
     juce::Array<juce::File> trackFiles;

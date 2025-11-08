@@ -87,16 +87,16 @@ MainComponent::MainComponent()
 
     pitchKnob.setLookAndFeel (&customLookAndFeel);
 
-    // REAL-TIME DJ-style pitch control: changes BOTH pitch and tempo together smoothly
+    // REAL-TIME pitch shifting with SoundTouch (pitch ONLY, tempo unchanged)
     pitchKnob.onValueChange = [this] {
         float semitones = pitchKnob.getValue();
-        currentPitchRatio = std::pow (2.0, semitones / 12.0);  // Convert semitones to ratio
+        currentPitchSemitones = semitones;
 
-        // Update varispeed source in REAL-TIME (smooth, no clicks!)
-        if (varispeedSource != nullptr)
-            varispeedSource->setPlaybackRate (currentPitchRatio);
+        // Update SoundTouch pitch shifter in REAL-TIME (smooth, flutter-free!)
+        if (pitchShifter != nullptr)
+            pitchShifter->setPitchSemitones (semitones);
 
-        DBG("Pitch: " << semitones << " semitones (ratio: " << currentPitchRatio << "x) - REAL-TIME");
+        DBG("Pitch: " << semitones << " semitones - REAL-TIME SoundTouch");
     };
 
     addAndMakeVisible (pitchKnob);
@@ -535,8 +535,12 @@ void MainComponent::loadTrack (int index)
 
     transportSource.stop();
     transportSource.setSource (nullptr);
-    varispeedSource.reset();
+    pitchShifter.reset();
     readerSource.reset();
+
+    // RESET pitch knob to center (0 semitones) when changing tracks
+    pitchKnob.setValue (0.0, juce::dontSendNotification);
+    currentPitchSemitones = 0.0;
 
     auto file = trackFiles[index];
     auto* reader = formatManager.createReaderFor (file);
@@ -545,18 +549,18 @@ void MainComponent::loadTrack (int index)
     {
         readerSource.reset (new juce::AudioFormatReaderSource (reader, true));
 
-        // Wrap reader source in varispeed source for real-time pitch control
-        varispeedSource.reset (new VarispeedAudioSource (readerSource.get(), false));
-        varispeedSource->setPlaybackRate (currentPitchRatio);
+        // Wrap reader source in SoundTouch pitch shifter for clean real-time pitch shifting
+        pitchShifter.reset (new SoundTouchPitchShifter (readerSource.get(), false));
+        pitchShifter->setPitchSemitones (currentPitchSemitones);  // Start at 0 (normal pitch)
 
-        // Connect varispeed source to transport (no sample rate scaling needed!)
-        transportSource.setSource (varispeedSource.get(), 0, nullptr, reader->sampleRate);
+        // Connect pitch shifter to transport
+        transportSource.setSource (pitchShifter.get(), 0, nullptr, reader->sampleRate);
 
         currentTrackIndex = index;
         currentTrackName = file.getFileNameWithoutExtension();
         trackNameLabel.setText (currentTrackName, juce::dontSendNotification);
 
-        DBG ("Loaded: " << currentTrackName << " with real-time varispeed (ratio: " << currentPitchRatio << "x)");
+        DBG ("Loaded: " << currentTrackName << " with SoundTouch pitch shifter (0 semitones)");
     }
 }
 
