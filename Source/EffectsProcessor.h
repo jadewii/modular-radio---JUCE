@@ -1,9 +1,10 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "SoundTouch/SoundTouch.h"
 
 /**
- * Professional effects processor using JUCE DSP
+ * Professional effects processor using JUCE DSP + SoundTouch
  * Matches the ModularRadio Swift app effect chain
  */
 class EffectsProcessor
@@ -43,6 +44,27 @@ public:
             return std::tanh (x);
         };
 
+        // Initialize SoundTouch for pitch shifting and time stretching
+        pitchShifter.setSampleRate (static_cast<uint> (spec.sampleRate));
+        pitchShifter.setChannels (static_cast<uint> (spec.numChannels));
+        pitchShifter.setPitchSemiTones (0.0f);  // No pitch change initially
+        pitchShifter.setTempo (1.0f);           // No time stretch (pitch-only mode)
+        pitchShifter.setRate (1.0f);            // Playback rate = 1.0
+        pitchShifter.setSetting (SETTING_USE_QUICKSEEK, 1);  // Faster processing
+        pitchShifter.setSetting (SETTING_USE_AA_FILTER, 1);  // Anti-aliasing
+
+        timeStretcher.setSampleRate (static_cast<uint> (spec.sampleRate));
+        timeStretcher.setChannels (static_cast<uint> (spec.numChannels));
+        timeStretcher.setPitchSemiTones (0.0f);  // No pitch change initially
+        timeStretcher.setTempo (1.0f);           // No time stretch initially
+        timeStretcher.setRate (1.0f);
+        timeStretcher.setSetting (SETTING_USE_QUICKSEEK, 1);
+        timeStretcher.setSetting (SETTING_USE_AA_FILTER, 1);
+
+        // Pre-allocate buffers for SoundTouch processing
+        soundTouchBuffer.resize (spec.maximumBlockSize * spec.numChannels);
+        soundTouchOutput.resize (spec.maximumBlockSize * spec.numChannels);
+
         sampleRate = spec.sampleRate;
     }
 
@@ -54,6 +76,8 @@ public:
         delayLine.reset();
         filter.reset();
         distortion.reset();
+        pitchShifter.clear();
+        timeStretcher.clear();
     }
 
     void process (juce::AudioBuffer<float>& buffer)
@@ -62,7 +86,8 @@ public:
         juce::dsp::ProcessContextReplacing<float> context (block);
 
         // Process through effects chain
-        // Order: Phaser → Delay → Chorus → Distortion → Reverb → Filter
+        // Order: Phaser → Delay → Chorus → Distortion → Reverb → Filter → Time Effect
+        // Note: Main pitch knob is handled at source level via ResamplingAudioSource
 
         if (!phaserBypassed)
             phaser.process (context);
@@ -81,6 +106,10 @@ public:
 
         if (!filterBypassed)
             filter.process (context);
+
+        // Time effect: time-stretch + pitch together
+        if (!timeBypassed)
+            processTimeStretch (buffer);
     }
 
     // Phaser controls
@@ -223,17 +252,47 @@ public:
         filterBypassed = bypassed;
     }
 
-    // Pitch shift controls
+    // Pitch shift controls (for main knob) - PITCH ONLY, NO TIME STRETCH
+    // NOTE: Main pitch knob now handled in MainComponent via ResamplingAudioSource
+    // This is instant and artifact-free for real-time DJ-style control
     void setPitchShift (float semitones)
     {
+        // This is now a no-op - pitch is handled at the source level
         pitchShiftSemitones = juce::jlimit (-12.0f, 12.0f, semitones);
-        // TODO: Implement real pitch shifting without time-stretch
-        // For now, this is a placeholder
     }
 
     void setPitchBypassed (bool bypassed)
     {
         pitchBypassed = bypassed;
+    }
+
+    float getPitchShiftRatio() const
+    {
+        // Convert semitones to playback ratio: 2^(semitones/12)
+        return std::pow (2.0f, pitchShiftSemitones / 12.0f);
+    }
+
+    // Time effect controls (pitch + time stretch)
+    void setTimeStretch (float amount)
+    {
+        timeStretch = juce::jlimit (0.5f, 2.0f, amount);  // 0.5x to 2x speed
+        timeStretcher.setTempo (timeStretch);  // Apply time stretching
+    }
+
+    void setTimePitch (float semitones)
+    {
+        timePitch = juce::jlimit (-12.0f, 12.0f, semitones);
+        timeStretcher.setPitchSemiTones (timePitch);  // Apply pitch shift
+    }
+
+    void setTimeMix (float mix)
+    {
+        timeMix = juce::jlimit (0.0f, 1.0f, mix);
+    }
+
+    void setTimeBypassed (bool bypassed)
+    {
+        timeBypassed = bypassed;
     }
 
 private:
@@ -244,6 +303,14 @@ private:
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayLine;
     juce::dsp::StateVariableTPTFilter<float> filter;
     juce::dsp::WaveShaper<float> distortion;
+
+    // SoundTouch for real-time pitch shifting and time stretching
+    soundtouch::SoundTouch pitchShifter;      // Main pitch knob: pitch-only (no time stretch)
+    soundtouch::SoundTouch timeStretcher;     // Time effect: time-stretch + pitch together
+
+    // Buffers for SoundTouch processing
+    std::vector<float> soundTouchBuffer;
+    std::vector<float> soundTouchOutput;
 
     // Effect parameters
     juce::Reverb::Parameters reverbParams;
@@ -261,16 +328,21 @@ private:
 
     float pitchShiftSemitones = 0.0f;
 
+    float timeStretch = 1.0f;    // Time stretch amount (0.5x to 2x)
+    float timePitch = 0.0f;      // Pitch shift in semitones
+    float timeMix = 0.5f;        // Mix amount
+
     double sampleRate = 44100.0;
 
-    // Bypass states (all start bypassed except phaser which has UI controls)
-    bool phaserBypassed = false;  // Enabled by default, controlled by UI
-    bool delayBypassed = true;    // Disabled until we add UI
+    // Bypass states (ALL start bypassed by default - user enables them)
+    bool phaserBypassed = true;
+    bool delayBypassed = true;
     bool chorusBypassed = true;
     bool distortionBypassed = true;
     bool reverbBypassed = true;
     bool filterBypassed = true;
-    bool pitchBypassed = true;
+    bool pitchBypassed = false;  // Main pitch knob is ALWAYS active (not a toggleable effect)
+    bool timeBypassed = true;
 
     // Helper functions
     void processDelay (juce::AudioBuffer<float>& buffer)
@@ -356,6 +428,85 @@ private:
 
         filter.setCutoffFrequency (filterCutoff);
         filter.setResonance (filterResonance);
+    }
+
+    // Process main pitch shift (pitch-only, no time stretch)
+    void processPitchShift (juce::AudioBuffer<float>& buffer)
+    {
+        int numSamples = buffer.getNumSamples();
+        int numChannels = buffer.getNumChannels();
+
+        // Interleave samples for SoundTouch (it expects interleaved stereo)
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* channelData = buffer.getReadPointer (ch);
+            for (int i = 0; i < numSamples; ++i)
+            {
+                soundTouchBuffer[i * numChannels + ch] = channelData[i];
+            }
+        }
+
+        // Process with SoundTouch
+        pitchShifter.putSamples (soundTouchBuffer.data(), numSamples);
+        uint receivedSamples = pitchShifter.receiveSamples (soundTouchOutput.data(), numSamples);
+
+        // De-interleave and copy back to buffer
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* channelData = buffer.getWritePointer (ch);
+            for (uint i = 0; i < receivedSamples; ++i)
+            {
+                channelData[i] = soundTouchOutput[i * numChannels + ch];
+            }
+            // Clear remaining samples if we got fewer than expected
+            for (uint i = receivedSamples; i < static_cast<uint>(numSamples); ++i)
+            {
+                channelData[i] = 0.0f;
+            }
+        }
+    }
+
+    // Process time-stretch + pitch (Time effect)
+    void processTimeStretch (juce::AudioBuffer<float>& buffer)
+    {
+        int numSamples = buffer.getNumSamples();
+        int numChannels = buffer.getNumChannels();
+
+        // Store dry signal for mixing
+        juce::AudioBuffer<float> dryBuffer (numChannels, numSamples);
+        dryBuffer.makeCopyOf (buffer);
+
+        // Interleave samples for SoundTouch
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* channelData = buffer.getReadPointer (ch);
+            for (int i = 0; i < numSamples; ++i)
+            {
+                soundTouchBuffer[i * numChannels + ch] = channelData[i];
+            }
+        }
+
+        // Process with SoundTouch (time-stretch + pitch)
+        timeStretcher.putSamples (soundTouchBuffer.data(), numSamples);
+        uint receivedSamples = timeStretcher.receiveSamples (soundTouchOutput.data(), numSamples);
+
+        // De-interleave and mix wet/dry
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* channelData = buffer.getWritePointer (ch);
+            auto* dryData = dryBuffer.getReadPointer (ch);
+
+            for (uint i = 0; i < receivedSamples; ++i)
+            {
+                float wet = soundTouchOutput[i * numChannels + ch];
+                channelData[i] = dryData[i] * (1.0f - timeMix) + wet * timeMix;
+            }
+            // Mix dry signal for remaining samples
+            for (uint i = receivedSamples; i < static_cast<uint>(numSamples); ++i)
+            {
+                channelData[i] = dryData[i];
+            }
+        }
     }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectsProcessor)

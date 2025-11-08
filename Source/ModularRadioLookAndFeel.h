@@ -27,14 +27,17 @@ public:
         auto radius = diameter / 2.0f;
         auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
+        // Check if this is the main pitch knob (larger than 200px)
+        bool isPitchKnob = diameter > 200.0f;
+
         // LAYER 1: Outer light grey ring
         auto outerRadius = radius * 0.85f;
         g.setColour (juce::Colour (0xffe0e0e0));  // Very light grey
         g.fillEllipse (centerX - outerRadius, centerY - outerRadius, outerRadius * 2, outerRadius * 2);
 
-        // LAYER 2: Middle darker grey ring
+        // LAYER 2: Middle lighter grey ring
         auto middleRadius = outerRadius * 0.75f;
-        g.setColour (juce::Colour (0xffc0c0c0));  // Medium grey
+        g.setColour (juce::Colour (0xffd0d0d0));  // Lighter grey (matching reference)
         g.fillEllipse (centerX - middleRadius, centerY - middleRadius, middleRadius * 2, middleRadius * 2);
 
         // LAYER 3: Inner white/light center circle
@@ -47,24 +50,57 @@ public:
 
         // Draw tick marks INSIDE on the outer grey ring - THIN and SUBTLE
         g.setColour (juce::Colour (0xff888888));  // Light grey (not dark!)
-        for (int i = 0; i < 40; ++i)  // 40 ticks
+
+        if (isPitchKnob)
         {
-            auto tickAngle = juce::degreesToRadians (i * 9.0f);  // Every 9 degrees
+            // Pitch knob: Draw ticks all the way around (360 degrees)
+            for (int i = 0; i < 40; ++i)  // 40 ticks around full circle
+            {
+                auto tickAngle = juce::degreesToRadians (i * 9.0f);  // Every 9 degrees
 
-            // Major ticks every 5th mark - THIN!
-            auto tickLength = (i % 5 == 0) ? 12.0f : 6.0f;
-            auto tickWidth = (i % 5 == 0) ? 1.5f : 1.0f;  // Much thinner!
+                // Major ticks every 5th mark - THIN!
+                auto tickLength = (i % 5 == 0) ? 12.0f : 6.0f;
+                auto tickWidth = (i % 5 == 0) ? 1.5f : 1.0f;
 
-            // Ticks are INSIDE - start at outer edge and go inward
-            auto startRadius = outerRadius - 2.0f;  // Start at outer ring edge
-            auto endRadius = startRadius - tickLength;  // Go inward
+                // Ticks are INSIDE - start at outer edge and go inward
+                auto startRadius = outerRadius - 2.0f;
+                auto endRadius = startRadius - tickLength;
 
-            auto startX = centerX + startRadius * std::sin (tickAngle);
-            auto startY = centerY - startRadius * std::cos (tickAngle);
-            auto endX = centerX + endRadius * std::sin (tickAngle);
-            auto endY = centerY - endRadius * std::cos (tickAngle);
+                auto startX = centerX + startRadius * std::sin (tickAngle);
+                auto startY = centerY - startRadius * std::cos (tickAngle);
+                auto endX = centerX + endRadius * std::sin (tickAngle);
+                auto endY = centerY - endRadius * std::cos (tickAngle);
 
-            g.drawLine (startX, startY, endX, endY, tickWidth);
+                g.drawLine (startX, startY, endX, endY, tickWidth);
+            }
+        }
+        else
+        {
+            // Regular knobs: Only draw ticks in the reachable range
+            auto angleRange = rotaryEndAngle - rotaryStartAngle;
+            int numTicks = 30;  // Number of ticks in the reachable range
+
+            for (int i = 0; i <= numTicks; ++i)
+            {
+                // Map tick position to the actual angle range
+                float t = static_cast<float>(i) / static_cast<float>(numTicks);
+                auto tickAngle = rotaryStartAngle + t * angleRange;
+
+                // Major ticks every 5th mark - THIN!
+                auto tickLength = (i % 5 == 0) ? 12.0f : 6.0f;
+                auto tickWidth = (i % 5 == 0) ? 1.5f : 1.0f;
+
+                // Ticks are INSIDE - start at outer edge and go inward
+                auto startRadius = outerRadius - 2.0f;
+                auto endRadius = startRadius - tickLength;
+
+                auto startX = centerX + startRadius * std::sin (tickAngle);
+                auto startY = centerY - startRadius * std::cos (tickAngle);
+                auto endX = centerX + endRadius * std::sin (tickAngle);
+                auto endY = centerY - endRadius * std::cos (tickAngle);
+
+                g.drawLine (startX, startY, endX, endY, tickWidth);
+            }
         }
 
         // Draw indicator line - starts from MIDDLE of the dark grey ring
@@ -119,41 +155,91 @@ public:
                           bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override
     {
         auto bounds = button.getLocalBounds().toFloat();
+        auto buttonText = button.getButtonText();
 
-        // Draw circular indicator button (retro style)
-        auto indicatorSize = 20.0f;
-        auto indicatorX = bounds.getX() + 5;
-        auto indicatorY = bounds.getCentreY() - indicatorSize / 2;
-
-        // Outer circle (border)
-        g.setColour (juce::Colours::black);
-        g.fillEllipse (indicatorX, indicatorY, indicatorSize, indicatorSize);
-
-        // Inner circle (indicator)
-        auto innerSize = indicatorSize - 4.0f;
-        auto innerX = indicatorX + 2.0f;
-        auto innerY = indicatorY + 2.0f;
-
-        if (button.getToggleState())
+        // Check if this is a filter type button (HP/LP/BP)
+        if (buttonText == "HP" || buttonText == "LP" || buttonText == "BP")
         {
-            // Green when active (NOT bypassed)
-            g.setColour (juce::Colour (0xff00ff00));  // Bright green
-        }
-        else
-        {
-            // Grey when bypassed
-            g.setColour (juce::Colour (0xff505050));  // Dark grey
-        }
-        g.fillEllipse (innerX, innerY, innerSize, innerSize);
+            auto centerX = bounds.getCentreX();
+            auto centerY = bounds.getCentreY();
+            auto diameter = juce::jmin(bounds.getWidth(), bounds.getHeight()) - 4;
 
-        // Draw button text (if any)
-        if (button.getButtonText().isNotEmpty())
-        {
+            // Outer circle (black border)
             g.setColour (juce::Colours::black);
+            g.fillEllipse (centerX - diameter/2, centerY - diameter/2, diameter, diameter);
+
+            // Inner circle (colored when ON, grey when OFF)
+            auto innerDiameter = diameter - 5;
+            if (button.getToggleState())
+            {
+                // Colored when active (green for filter)
+                g.setColour (juce::Colour (0xff4CAF50));  // Green
+            }
+            else
+            {
+                // Grey when inactive
+                g.setColour (juce::Colour (0xff909090));
+            }
+            g.fillEllipse (centerX - innerDiameter/2, centerY - innerDiameter/2, innerDiameter, innerDiameter);
+
+            // Draw label text INSIDE the circle (centered)
+            g.setColour (juce::Colours::white);
             g.setFont (juce::Font (juce::FontOptions().withHeight(10.0f)).boldened());
-            g.drawText (button.getButtonText(), indicatorX + indicatorSize + 5, indicatorY,
-                       bounds.getWidth() - indicatorSize - 10, indicatorSize,
-                       juce::Justification::centredLeft);
+            g.drawText (buttonText, bounds, juce::Justification::centred);
+        }
+        else if (button.getWidth() >= 40 && buttonText.isEmpty())  // FX randomize button - circular
+        {
+            auto centerX = bounds.getCentreX();
+            auto centerY = bounds.getCentreY();
+            auto diameter = juce::jmin(bounds.getWidth(), bounds.getHeight()) - 4;
+
+            // Outer circle (black border)
+            g.setColour (juce::Colours::black);
+            g.fillEllipse (centerX - diameter/2, centerY - diameter/2, diameter, diameter);
+
+            // Inner circle - WHITE normally, PINK when flashing
+            auto innerDiameter = diameter - 6;
+            // Get flash state from button's property (if set)
+            bool isFlashing = button.getProperties().getWithDefault ("flashing", false);
+            g.setColour (isFlashing ? juce::Colour (0xffFF1493) : juce::Colours::white);  // White normally, hot pink on flash
+            g.fillEllipse (centerX - innerDiameter/2, centerY - innerDiameter/2, innerDiameter, innerDiameter);
+        }
+        else  // Small circular bypass indicators
+        {
+            auto indicatorSize = 20.0f;
+            auto indicatorX = bounds.getX() + 5;
+            auto indicatorY = bounds.getCentreY() - indicatorSize / 2;
+
+            // Outer circle (border)
+            g.setColour (juce::Colours::black);
+            g.fillEllipse (indicatorX, indicatorY, indicatorSize, indicatorSize);
+
+            // Inner circle (indicator)
+            auto innerSize = indicatorSize - 4.0f;
+            auto innerX = indicatorX + 2.0f;
+            auto innerY = indicatorY + 2.0f;
+
+            if (button.getToggleState())
+            {
+                // Green when active (NOT bypassed)
+                g.setColour (juce::Colour (0xff00ff00));  // Bright green
+            }
+            else
+            {
+                // Grey when bypassed
+                g.setColour (juce::Colour (0xff505050));  // Dark grey
+            }
+            g.fillEllipse (innerX, innerY, innerSize, innerSize);
+
+            // Draw button text (if any)
+            if (button.getButtonText().isNotEmpty())
+            {
+                g.setColour (juce::Colours::black);
+                g.setFont (juce::Font (juce::FontOptions().withHeight(10.0f)).boldened());
+                g.drawText (button.getButtonText(), indicatorX + indicatorSize + 5, indicatorY,
+                           bounds.getWidth() - indicatorSize - 10, indicatorSize,
+                           juce::Justification::centredLeft);
+            }
         }
     }
 
@@ -180,57 +266,60 @@ public:
 
         g.setColour (juce::Colours::black);
 
-        // Draw transport icons matching SwiftUI
+        // Draw transport icons - BOLD and FILLED
         if (button.getButtonText() == "Play" || button.getButtonText() == "Pause")
         {
-            // Play/Pause icon (size 24 in SwiftUI)
-            auto iconSize = 24.0f;
             if (button.getButtonText() == "Play")
             {
-                // Play triangle
+                // Play triangle - BOLD and filled
+                auto iconSize = 20.0f;
                 juce::Path play;
-                play.addTriangle (centerX - iconSize/3 + 2, centerY - iconSize/2,
-                                 centerX - iconSize/3 + 2, centerY + iconSize/2,
-                                 centerX + iconSize/2 + 2, centerY);
+                play.addTriangle (centerX - iconSize/3, centerY - iconSize/2,
+                                 centerX - iconSize/3, centerY + iconSize/2,
+                                 centerX + iconSize/2, centerY);
                 g.fillPath (play);
             }
             else
             {
-                // Pause bars
-                auto barWidth = iconSize * 0.25f;
-                auto barHeight = iconSize * 0.8f;
-                auto spacing = iconSize * 0.2f;
+                // Pause bars - thinner and more elegant
+                auto barWidth = 5.0f;
+                auto barHeight = 18.0f;
+                auto spacing = 4.0f;
                 g.fillRect (centerX - spacing - barWidth, centerY - barHeight/2, barWidth, barHeight);
                 g.fillRect (centerX + spacing, centerY - barHeight/2, barWidth, barHeight);
             }
         }
         else if (button.getButtonText() == "Previous")
         {
-            // Previous arrow (backward.fill, size 28)
-            auto iconSize = 28.0f;
+            // Previous - two triangles pointing LEFT (like ◄◄) touching with NO space - 15% LARGER
+            auto iconSize = 23.0f;  // Was 20.0f, now 15% larger
             juce::Path prev;
-            // Left triangle
-            prev.addTriangle (centerX - iconSize/3, centerY - iconSize/3,
-                            centerX - iconSize/3, centerY + iconSize/3,
+
+            // Right triangle (pointing left) - this one is on the right side
+            prev.addTriangle (centerX + iconSize/2, centerY - iconSize/2,
+                            centerX + iconSize/2, centerY + iconSize/2,
+                            centerX, centerY);
+
+            // Left triangle (pointing left) - this one is on the left side, touching the right triangle
+            prev.addTriangle (centerX, centerY - iconSize/2,
+                            centerX, centerY + iconSize/2,
                             centerX - iconSize/2, centerY);
-            // Right triangle
-            prev.addTriangle (centerX + iconSize/6, centerY - iconSize/3,
-                            centerX + iconSize/6, centerY + iconSize/3,
-                            centerX - iconSize/6, centerY);
             g.fillPath (prev);
         }
         else if (button.getButtonText() == "Next")
         {
-            // Next arrow (forward.fill, size 28)
-            auto iconSize = 28.0f;
+            // Next - two triangles pointing RIGHT (like ►►) touching with NO space - 15% LARGER
+            auto iconSize = 23.0f;  // Was 20.0f, now 15% larger
             juce::Path next;
-            // Left triangle
-            next.addTriangle (centerX - iconSize/6, centerY - iconSize/3,
-                            centerX - iconSize/6, centerY + iconSize/3,
-                            centerX + iconSize/6, centerY);
-            // Right triangle
-            next.addTriangle (centerX + iconSize/3, centerY - iconSize/3,
-                            centerX + iconSize/3, centerY + iconSize/3,
+
+            // Left triangle (pointing right) - this one is on the left side
+            next.addTriangle (centerX - iconSize/2, centerY - iconSize/2,
+                            centerX - iconSize/2, centerY + iconSize/2,
+                            centerX, centerY);
+
+            // Right triangle (pointing right) - this one is on the right side, touching the left triangle
+            next.addTriangle (centerX, centerY - iconSize/2,
+                            centerX, centerY + iconSize/2,
                             centerX + iconSize/2, centerY);
             g.fillPath (next);
         }
@@ -303,22 +392,23 @@ public:
     {
         // Draw effect name with bypass indicator inline
         g.setColour (juce::Colours::black);
-        g.setFont (juce::Font (juce::FontOptions().withHeight(14.0f)).boldened());
-        g.drawText (effectName.toUpperCase(), 30, 0, getWidth() - 30, 20, juce::Justification::left);
+        g.setFont (juce::Font (juce::FontOptions().withHeight(16.0f)).boldened());
+        g.drawText (effectName.toUpperCase(), 35, 0, getWidth() - 35, 25, juce::Justification::left);
 
-        // Draw parameter labels
-        g.setFont (juce::Font (juce::FontOptions().withHeight(9.0f)));
-        g.drawText (param1Name, 90, 45, 40, 20, juce::Justification::left);
-        g.drawText (param2Name, 90, 73, 40, 20, juce::Justification::left);
+        // Draw parameter labels (positioned to the right of the knob)
+        g.setFont (juce::Font (juce::FontOptions().withHeight(11.0f)));
+        g.drawText (param1Name, 135, 70, 50, 25, juce::Justification::right);
+        if (param2Name.isNotEmpty())
+            g.drawText (param2Name, 135, 115, 50, 25, juce::Justification::right);
     }
 
     void resized() override
     {
-        // Layout: Bypass indicator next to name, BIGGER knob on left, LONGER sliders on right
-        bypassButton.setBounds (0, 0, 25, 20);  // Small circular button next to effect name
-        knob.setBounds (0, 25, 120, 120);  // BIGGER! Was 80x80, now 120x120
-        slider1.setBounds (145, 58, 160, 20);  // MUCH LONGER! Was 100, now 160
-        slider2.setBounds (145, 96, 160, 20);  // MUCH LONGER! Was 100, now 160
+        // Layout: Bypass indicator next to name, knob on left (original size), sliders on right with labels
+        bypassButton.setBounds (0, 0, 30, 22);
+        knob.setBounds (10, 40, 120, 120);  // Original larger size, positioned left
+        slider1.setBounds (190, 75, 160, 25);  // Sliders positioned to the right of labels
+        slider2.setBounds (190, 120, 160, 25);
     }
 
     void setBypassCallback (std::function<void(bool)> callback)
