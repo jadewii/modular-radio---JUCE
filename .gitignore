@@ -41,9 +41,7 @@ DerivedData/
 .LSOverride
 
 ## JUCE specific
-Builds/VisualStudio*/
-Builds/LinuxMakefile/
-Builds/Android/
+Builds/
 JuceLibraryCode/
 
 ## Binaries
