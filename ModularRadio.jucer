@@ -27,7 +27,8 @@
   </MODULES>
   <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1"/>
   <EXPORTFORMATS>
-    <XCODE_MAC targetFolder="Builds/MacOSX" customXcodeResourceFolders="/Users/jade/JUCEProjects/ModularRadio/Resources">
+    <XCODE_MAC targetFolder="Builds/MacOSX" customXcodeResourceFolders="/Users/jade/JUCEProjects/ModularRadio/Resources"
+               smallIcon="ModularRadio.icns" bigIcon="ModularRadio.icns">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" targetName="ModularRadio"/>
         <CONFIGURATION isDebug="0" name="Release" targetName="ModularRadio"/>

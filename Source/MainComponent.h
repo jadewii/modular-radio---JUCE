@@ -88,35 +88,33 @@ private:
 class DraggableComponent : public juce::Component
 {
 public:
-    DraggableComponent()
+    DraggableComponent (bool showDragHandle = false)
+        : showHandle (showDragHandle)
     {
-        // Intercept ALL mouse events on this component
-        setInterceptsMouseClicks (true, true);
+        // Intercept mouse clicks on empty space, but NOT on child components
+        // This allows buttons, sliders, etc. to handle their own clicks properly
+        setInterceptsMouseClicks (true, false);
     }
 
     void paint (juce::Graphics& g) override
     {
-        // No visible drag handle - dragging works invisibly
+        // Draw visible orange drag handle if requested
+        if (showHandle)
+        {
+            g.setColour (juce::Colours::orange);
+            g.fillRect (0, 0, getWidth(), 20);  // Orange bar at top
+            g.setColour (juce::Colours::white);
+            g.setFont (juce::Font (juce::FontOptions().withHeight(10.0f)).boldened());
+            g.drawText ("DRAG", 0, 0, getWidth(), 20, juce::Justification::centred);
+        }
     }
 
     void mouseDown (const juce::MouseEvent& e) override
     {
-        // Check if we clicked on a child component (knob, slider, button)
-        auto child = getComponentAt (e.getPosition());
-
-        if (child != nullptr && child != this)
-        {
-            // Clicked on a child - let it handle the event
-            isDragging = false;
-            auto childEvent = e.getEventRelativeTo (child);
-            child->mouseDown (childEvent);
-        }
-        else
-        {
-            // Clicked on empty space - start dragging
-            dragger.startDraggingComponent (this, e);
-            isDragging = true;
-        }
+        // Only respond to clicks on empty space (not on children)
+        // Start dragging the entire component
+        dragger.startDraggingComponent (this, e);
+        isDragging = true;
     }
 
     void mouseDrag (const juce::MouseEvent& e) override
@@ -136,23 +134,20 @@ public:
             if (onDragEnd)
                 onDragEnd();
         }
-        else
-        {
-            // Forward mouseUp to child
-            auto child = getComponentAt (e.getPosition());
-            if (child != nullptr && child != this)
-            {
-                auto childEvent = e.getEventRelativeTo (child);
-                child->mouseUp (childEvent);
-            }
-        }
     }
 
     std::function<void()> onDragEnd;
 
+    void setShowDragHandle (bool show)
+    {
+        showHandle = show;
+        repaint();
+    }
+
 private:
     juce::ComponentDragger dragger;
     bool isDragging = false;
+    bool showHandle = false;
 };
 
 //==============================================================================
@@ -218,9 +213,11 @@ private:
     juce::Label ledIndicator;  // LED shows playback status
     ModularRadioLookAndFeel customLookAndFeel;
 
-    // Draggable wrappers for FX button and LED
+    // Draggable wrappers for FX button, LED, track info, and transport controls
     DraggableComponent fxDraggableWrapper;
     DraggableComponent ledDraggableWrapper;
+    DraggableComponent trackInfoDraggableWrapper;  // Wrapper for song name
+    DraggableComponent transportDraggableWrapper;   // Wrapper for play/next/previous buttons
 
     // Effect controls - custom knob groups (1 knob + 2 sliders each)
     std::unique_ptr<EffectKnobGroup> phaserGroup;
@@ -231,6 +228,9 @@ private:
     std::unique_ptr<EffectKnobGroup> filterGroup;
     std::unique_ptr<EffectKnobGroup> timeGroup;
 
+    // Master volume control
+    std::unique_ptr<VolumeKnob> volumeKnob;
+
     // Draggable wrappers for all effect groups
     DraggableComponent phaserDraggableWrapper;
     DraggableComponent delayDraggableWrapper;
@@ -239,11 +239,16 @@ private:
     DraggableComponent reverbDraggableWrapper;
     DraggableComponent filterDraggableWrapper;
     DraggableComponent timeDraggableWrapper;
+    DraggableComponent volumeDraggableWrapper;
+    DraggableComponent resetDraggableWrapper;
 
     // Filter type buttons
     juce::ToggleButton filterHPButton;
     juce::ToggleButton filterLPButton;
     juce::ToggleButton filterBPButton;
+
+    // RESET button - turns all FX off and resets sliders to 0
+    juce::TextButton resetButton;
 
     //==============================================================================
     void loadTrack (int index);

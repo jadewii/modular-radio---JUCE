@@ -248,6 +248,19 @@ public:
     {
         auto bounds = button.getLocalBounds().toFloat();
 
+        // Check if this is the RESET button
+        if (button.getButtonText() == "RESET")
+        {
+            // Clear background (transparent), white outline
+            g.setColour (juce::Colours::transparentBlack);
+            g.fillRoundedRectangle (bounds, 5.0f);
+
+            // White outline
+            g.setColour (juce::Colours::white);
+            g.drawRoundedRectangle (bounds.reduced (1), 5.0f, 2.0f);
+            return;
+        }
+
         // Check if this is the play button (60x60) vs prev/next (50x50)
         if (button.getWidth() == 60 && button.getHeight() == 60)
         {
@@ -263,6 +276,15 @@ public:
         auto bounds = button.getLocalBounds().toFloat();
         auto centerX = bounds.getCentreX();
         auto centerY = bounds.getCentreY();
+
+        // Check if this is the RESET button - draw white text
+        if (button.getButtonText() == "RESET")
+        {
+            g.setColour (juce::Colours::white);
+            g.setFont (juce::Font (juce::FontOptions().withHeight(14.0f)).boldened());
+            g.drawText ("RESET", bounds, juce::Justification::centred);
+            return;
+        }
 
         g.setColour (juce::Colours::black);
 
@@ -374,7 +396,7 @@ public:
         bypassButton.setToggleState (false, juce::dontSendNotification);  // Start with effect bypassed
         bypassButton.setLookAndFeel (&customLookAndFeel);
         bypassButton.onClick = [this] {
-            if (bypassCallback) bypassCallback (!bypassButton.getToggleState());  // Inverted: green = NOT bypassed
+            if (bypassCallback) bypassCallback (!bypassButton.getToggleState());  // Inverted: green (ON) = NOT bypassed
             repaint();
         };
         addAndMakeVisible (bypassButton);
@@ -405,7 +427,7 @@ public:
     void resized() override
     {
         // Layout: Bypass indicator next to name, knob on left (original size), sliders on right with labels
-        bypassButton.setBounds (0, 0, 30, 22);
+        bypassButton.setBounds (0, 0, 36, 26);  // 20% larger (was 30x22)
         knob.setBounds (10, 40, 120, 120);  // Original larger size, positioned left
         slider1.setBounds (190, 75, 160, 25);  // Sliders positioned to the right of labels
         slider2.setBounds (190, 120, 160, 25);
@@ -440,4 +462,53 @@ private:
     std::function<void(bool)> bypassCallback;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectKnobGroup)
+};
+
+/**
+ * Simple Volume Knob Component
+ * Just one big knob with label - no bypass button
+ */
+class VolumeKnob : public juce::Component
+{
+public:
+    VolumeKnob (std::function<void(float)> onValueChange)
+        : valueCallback (onValueChange)
+    {
+        // Setup knob
+        knob.setSliderStyle (juce::Slider::Rotary);
+        knob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        knob.setRange (0.0, 1.0, 0.01);
+        knob.setValue (0.7);  // Default to 70% volume
+        knob.setLookAndFeel (&customLookAndFeel);
+        knob.onValueChange = [this] { if (valueCallback) valueCallback (knob.getValue()); };
+        addAndMakeVisible (knob);
+    }
+
+    ~VolumeKnob()
+    {
+        knob.setLookAndFeel (nullptr);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        // Draw "VOLUME" label to the left of the knob
+        g.setColour (juce::Colours::black);
+        g.setFont (juce::Font (juce::FontOptions().withHeight(24.0f)).boldened());
+        g.drawText ("VOLUME", 0, 0, 100, getHeight(), juce::Justification::centredLeft);
+    }
+
+    void resized() override
+    {
+        // Position knob to the right of the label - 30% smaller than 240 = 168x168
+        knob.setBounds (120, 0, 168, 168);
+    }
+
+    juce::Slider& getKnob() { return knob; }
+
+private:
+    juce::Slider knob;
+    ModularRadioLookAndFeel customLookAndFeel;
+    std::function<void(float)> valueCallback;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VolumeKnob)
 };

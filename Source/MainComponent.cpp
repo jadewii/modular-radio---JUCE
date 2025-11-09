@@ -1,7 +1,6 @@
 #include "MainComponent.h"
-
-// Include SoundTouch implementation
-#include "SoundTouchImpl.cpp"
+#include <random>
+#include <algorithm>
 
 MainComponent::MainComponent()
 {
@@ -41,27 +40,38 @@ MainComponent::MainComponent()
     playButton.setButtonText ("Play");
     playButton.onClick = [this] { playButtonClicked(); };
     playButton.setLookAndFeel (&customLookAndFeel);
-    addAndMakeVisible (playButton);
+    transportDraggableWrapper.addAndMakeVisible (playButton);
 
     stopButton.setButtonText ("Stop");
     stopButton.onClick = [this] { stopButtonClicked(); };
-    addAndMakeVisible (stopButton);
+    transportDraggableWrapper.addAndMakeVisible (stopButton);
 
     nextButton.setButtonText ("Next");
     nextButton.onClick = [this] { nextButtonClicked(); };
     nextButton.setLookAndFeel (&customLookAndFeel);
-    addAndMakeVisible (nextButton);
+    transportDraggableWrapper.addAndMakeVisible (nextButton);
 
     previousButton.setButtonText ("Previous");
     previousButton.onClick = [this] { previousButtonClicked(); };
     previousButton.setLookAndFeel (&customLookAndFeel);
-    addAndMakeVisible (previousButton);
+    transportDraggableWrapper.addAndMakeVisible (previousButton);
 
-    // Track labels
+    // Add transport wrapper to main component with visible orange drag handle
+    transportDraggableWrapper.setShowDragHandle (true);  // Show orange drag handle
+    transportDraggableWrapper.onDragEnd = [this] { saveComponentPositions(); };
+    addAndMakeVisible (transportDraggableWrapper);
+
+    // Track name label - centered below transport controls
     trackNameLabel.setText ("No track loaded", juce::dontSendNotification);
     trackNameLabel.setJustificationType (juce::Justification::centred);
-    trackNameLabel.setColour (juce::Label::textColourId, juce::Colours::white);
-    addAndMakeVisible (trackNameLabel);
+    trackNameLabel.setColour (juce::Label::textColourId, juce::Colours::black);  // Black like transport controls
+    trackNameLabel.setFont (juce::Font (juce::FontOptions().withHeight(19.2f)));  // 20% larger (was 16, now 19.2)
+    trackInfoDraggableWrapper.addAndMakeVisible (trackNameLabel);
+
+    // Add track info wrapper to main component with visible orange drag handle
+    trackInfoDraggableWrapper.setShowDragHandle (true);  // Show orange drag handle
+    trackInfoDraggableWrapper.onDragEnd = [this] { saveComponentPositions(); };
+    addAndMakeVisible (trackInfoDraggableWrapper);
 
     // Time label - HIDDEN (not added to view)
 
@@ -149,7 +159,7 @@ MainComponent::MainComponent()
         filterGroup->getSlider1().setValue (random.nextDouble(), juce::sendNotification);
         filterGroup->getBypassButton().setToggleState (random.nextBool(), juce::sendNotification);
 
-        // Time
+        // Bitcrusher
         timeGroup->getKnob().setValue (random.nextDouble(), juce::sendNotification);
         timeGroup->getSlider1().setValue (random.nextDouble(), juce::sendNotification);
         timeGroup->getSlider2().setValue (random.nextDouble(), juce::sendNotification);
@@ -242,23 +252,23 @@ MainComponent::MainComponent()
     reverbDraggableWrapper.onDragEnd = [this] { saveComponentPositions(); };
     addAndMakeVisible (reverbDraggableWrapper);
 
-    // Filter: Knob=Cutoff, Slider: Resonance (buttons for type)
+    // Filter: Knob=Cutoff, Slider: Resonance, Gain (buttons for type)
     filterGroup = std::make_unique<EffectKnobGroup> ("Filter", "RESO", "GAIN",
         juce::Colours::green,
         [this](float v) { effectsProcessor.setFilterCutoff(v); },
         [this](float v) { effectsProcessor.setFilterResonance(v); },
-        [this](float v) { /* gain/drive */ });
+        [this](float v) { effectsProcessor.setFilterGain(v); });
     filterGroup->setBypassCallback ([this](bool bypassed) {
         effectsProcessor.setFilterBypassed(bypassed);
     });
-    filterGroup->getSlider2().setVisible (false);  // Hide second slider for filter
+    // GAIN slider now visible and positioned below RESO slider (not covered by filter type buttons)
 
     // Filter type buttons (HP, LP, BP) - radio button group - INSIDE the filter group wrapper
     filterHPButton.setButtonText ("HP");
     filterHPButton.setClickingTogglesState (true);
     filterHPButton.setRadioGroupId (1001);
     filterHPButton.setLookAndFeel (&customLookAndFeel);
-    filterHPButton.onClick = [this] { effectsProcessor.setFilterType(2); };  // High-pass
+    filterHPButton.onClick = [this] { effectsProcessor.setFilterType(1); };  // High-pass (FIXED: was 2)
     filterGroup->addAndMakeVisible (filterHPButton);  // Add to filter group
 
     filterLPButton.setButtonText ("LP");
@@ -273,7 +283,7 @@ MainComponent::MainComponent()
     filterBPButton.setClickingTogglesState (true);
     filterBPButton.setRadioGroupId (1001);
     filterBPButton.setLookAndFeel (&customLookAndFeel);
-    filterBPButton.onClick = [this] { effectsProcessor.setFilterType(1); };  // Band-pass
+    filterBPButton.onClick = [this] { effectsProcessor.setFilterType(2); };  // Band-pass (FIXED: was 1)
     filterGroup->addAndMakeVisible (filterBPButton);  // Add to filter group
 
     // Add filter group to draggable wrapper
@@ -281,18 +291,77 @@ MainComponent::MainComponent()
     filterDraggableWrapper.onDragEnd = [this] { saveComponentPositions(); };
     addAndMakeVisible (filterDraggableWrapper);
 
-    // Time: Knob=Stretch, Sliders: Pitch, Mix
-    timeGroup = std::make_unique<EffectKnobGroup> ("Time", "PITCH", "MIX",
+    // RESET button - turns all FX off and resets sliders to 0
+    resetButton.setButtonText ("RESET");
+    resetButton.setLookAndFeel (&customLookAndFeel);
+    resetButton.onClick = [this] {
+        // Turn off all effect bypass buttons (set them to bypassed = true)
+        phaserGroup->getBypassButton().setToggleState (false, juce::sendNotification);
+        delayGroup->getBypassButton().setToggleState (false, juce::sendNotification);
+        chorusGroup->getBypassButton().setToggleState (false, juce::sendNotification);
+        distortionGroup->getBypassButton().setToggleState (false, juce::sendNotification);
+        reverbGroup->getBypassButton().setToggleState (false, juce::sendNotification);
+        filterGroup->getBypassButton().setToggleState (false, juce::sendNotification);
+        timeGroup->getBypassButton().setToggleState (false, juce::sendNotification);
+
+        // Reset all sliders to 0
+        phaserGroup->getKnob().setValue (0.0, juce::sendNotification);
+        phaserGroup->getSlider1().setValue (0.0, juce::sendNotification);
+        phaserGroup->getSlider2().setValue (0.0, juce::sendNotification);
+
+        delayGroup->getKnob().setValue (0.0, juce::sendNotification);
+        delayGroup->getSlider1().setValue (0.0, juce::sendNotification);
+        delayGroup->getSlider2().setValue (0.0, juce::sendNotification);
+
+        chorusGroup->getKnob().setValue (0.0, juce::sendNotification);
+        chorusGroup->getSlider1().setValue (0.0, juce::sendNotification);
+        chorusGroup->getSlider2().setValue (0.0, juce::sendNotification);
+
+        distortionGroup->getKnob().setValue (0.0, juce::sendNotification);
+        distortionGroup->getSlider1().setValue (0.0, juce::sendNotification);
+
+        reverbGroup->getKnob().setValue (0.0, juce::sendNotification);
+        reverbGroup->getSlider1().setValue (0.0, juce::sendNotification);
+        reverbGroup->getSlider2().setValue (0.0, juce::sendNotification);
+
+        // Filter gets DEFAULT values (not zero) - useful starting position
+        filterGroup->getKnob().setValue (0.5, juce::sendNotification);      // Cutoff at middle (1400Hz)
+        filterGroup->getSlider1().setValue (0.3, juce::sendNotification);   // Low resonance
+        filterGroup->getSlider2().setValue (0.5, juce::sendNotification);   // Unity gain
+
+        timeGroup->getKnob().setValue (0.0, juce::sendNotification);
+        timeGroup->getSlider1().setValue (0.0, juce::sendNotification);
+        timeGroup->getSlider2().setValue (0.0, juce::sendNotification);
+
+        DBG ("RESET: All effects turned off and sliders reset to 0");
+    };
+
+    // Make RESET button draggable with visible orange drag handle
+    resetDraggableWrapper.setShowDragHandle (true);  // Show orange drag handle
+    resetDraggableWrapper.addAndMakeVisible (resetButton);
+    resetDraggableWrapper.onDragEnd = [this] { saveComponentPositions(); };
+    addAndMakeVisible (resetDraggableWrapper);
+
+    // Bitcrusher: Knob=BitDepth, Sliders: Crush, Mix
+    timeGroup = std::make_unique<EffectKnobGroup> ("BitCrush", "CRUSH", "MIX",
         juce::Colours::purple,
-        [this](float v) { effectsProcessor.setTimeStretch(0.5f + v * 1.5f); },  // 0.5x to 2x
-        [this](float v) { effectsProcessor.setTimePitch((v - 0.5f) * 24.0f); },  // -12 to +12 semitones
-        [this](float v) { effectsProcessor.setTimeMix(v); });
+        [this](float v) { effectsProcessor.setBitcrusherBitDepth(v); },  // 0-1 = 1-16 bits
+        [this](float v) { effectsProcessor.setBitcrusherCrush(v); },  // 0-1 = 1x-32x sample rate reduction
+        [this](float v) { effectsProcessor.setBitcrusherMix(v); });
     timeGroup->setBypassCallback ([this](bool bypassed) {
-        effectsProcessor.setTimeBypassed(bypassed);
+        effectsProcessor.setBitcrusherBypassed(bypassed);
     });
     timeDraggableWrapper.addAndMakeVisible (timeGroup.get());
     timeDraggableWrapper.onDragEnd = [this] { saveComponentPositions(); };
     addAndMakeVisible (timeDraggableWrapper);
+
+    // Master Volume Control (single big knob, no bypass button)
+    volumeKnob = std::make_unique<VolumeKnob> ([this](float v) {
+        masterGain = v;  // 0.0 to 1.0
+    });
+    volumeDraggableWrapper.addAndMakeVisible (volumeKnob.get());
+    volumeDraggableWrapper.onDragEnd = [this] { saveComponentPositions(); };
+    addAndMakeVisible (volumeDraggableWrapper);
 
     // Load bundled music
     loadBundledMusic();
@@ -320,6 +389,7 @@ MainComponent::~MainComponent()
     filterHPButton.setLookAndFeel (nullptr);
     filterLPButton.setLookAndFeel (nullptr);
     filterBPButton.setLookAndFeel (nullptr);
+    resetButton.setLookAndFeel (nullptr);
     shutdownAudio();
 }
 
@@ -356,8 +426,14 @@ void MainComponent::prepareToPlay (int samplesPerBlockExpected, double sampleRat
 
     effectsProcessor.setFilterCutoff (filterGroup->getKnob().getValue());
     effectsProcessor.setFilterResonance (filterGroup->getSlider1().getValue());
+    effectsProcessor.setFilterGain (filterGroup->getSlider2().getValue());
     // Filter type initialized from button states (LP is default)
     effectsProcessor.setFilterType (0);  // Low-pass by default
+
+    // Bitcrusher effect initialization
+    effectsProcessor.setBitcrusherBitDepth (timeGroup->getKnob().getValue());
+    effectsProcessor.setBitcrusherCrush (timeGroup->getSlider1().getValue());
+    effectsProcessor.setBitcrusherMix (timeGroup->getSlider2().getValue());
 
     DBG ("Audio prepared: " << sampleRate << " Hz");
 }
@@ -372,6 +448,9 @@ void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& buffe
 
     transportSource.getNextAudioBlock (bufferToFill);
     effectsProcessor.process (*bufferToFill.buffer);
+
+    // Apply master volume
+    bufferToFill.buffer->applyGain (masterGain);
 }
 
 void MainComponent::releaseResources()
@@ -407,19 +486,46 @@ void MainComponent::paint (juce::Graphics& g)
                     0, 0, moduleImage.getWidth(), moduleImage.getHeight());
     }
 
-    // Draw LED indicator as circle (account for position within wrapper)
+    // Draw LED indicator as realistic 3D circle (account for position within wrapper)
     auto wrapperBounds = ledDraggableWrapper.getBounds();
     auto ledLocalBounds = ledIndicator.getBounds().toFloat();
     auto ledBounds = ledLocalBounds.translated (wrapperBounds.getX(), wrapperBounds.getY());
     auto ledColor = ledIndicator.findColour (juce::Label::backgroundColourId);
 
-    // Black border
+    // Outer glow (only when LED is bright green / playing)
+    if (state == Playing)
+    {
+        g.setColour (ledColor.withAlpha (0.3f));
+        g.fillEllipse (ledBounds.expanded (2));
+    }
+
+    // Black bezel/border
     g.setColour (juce::Colours::black);
     g.fillEllipse (ledBounds);
 
-    // Inner LED light
-    g.setColour (ledColor);
+    // Main LED body with radial gradient for 3D depth
+    auto centerX = ledBounds.getCentreX();
+    auto centerY = ledBounds.getCentreY();
+    auto radius = ledBounds.getWidth() / 2.0f - 3.0f;
+
+    juce::ColourGradient gradient (
+        ledColor.brighter (0.5f),  // Brighter in center
+        centerX - radius * 0.3f, centerY - radius * 0.3f,  // Offset up-left for light source
+        ledColor.darker (0.3f),     // Darker at edges
+        centerX + radius * 0.7f, centerY + radius * 0.7f,  // Toward bottom-right
+        true  // Radial gradient
+    );
+
+    g.setGradientFill (gradient);
     g.fillEllipse (ledBounds.reduced (3));
+
+    // Glossy highlight (small white shine in top-left)
+    g.setColour (juce::Colours::white.withAlpha (0.6f));
+    auto highlightX = centerX - radius * 0.35f;
+    auto highlightY = centerY - radius * 0.35f;
+    auto highlightSize = radius * 0.5f;
+    g.fillEllipse (highlightX - highlightSize / 2, highlightY - highlightSize / 2,
+                   highlightSize, highlightSize);
 }
 
 void MainComponent::resized()
@@ -443,21 +549,32 @@ void MainComponent::resized()
     ledDraggableWrapper.setBounds (moduleX + 420, moduleY + 150, 32, 32);  // Just fits the LED
     ledIndicator.setBounds (5, 5, 22, 22);  // LED centered in wrapper
 
-    // Transport controls - perfectly aligned with play button
+    // Transport controls wrapper - positioned with space for orange drag handle at top
     auto transportY = moduleY + 484;
-    auto playButtonY = transportY;
     auto playButtonHeight = 60;
+    auto dragHandleHeight = 20;
 
-    // Align prev/next buttons vertically centered with play button
-    auto prevNextY = playButtonY + (playButtonHeight - 50) / 2;  // Center 50px buttons with 60px play button
+    // Position transport wrapper with extra height for drag handle
+    transportDraggableWrapper.setBounds (centerX - 120, transportY - dragHandleHeight, 240, playButtonHeight + dragHandleHeight);
 
-    previousButton.setBounds (centerX - 110, prevNextY, 50, 50);  // Left of center, vertically aligned
-    playButton.setBounds (centerX - 30, playButtonY, 60, 60);     // Center (bigger)
-    nextButton.setBounds (centerX + 60, prevNextY, 50, 50);       // Right of center, vertically aligned
+    // Position buttons within wrapper (relative to wrapper, accounting for drag handle)
+    auto prevNextY = dragHandleHeight + (playButtonHeight - 50) / 2;  // Center 50px buttons with 60px play button
+
+    previousButton.setBounds (10, prevNextY, 50, 50);  // Left of center, vertically aligned
+    playButton.setBounds (90, dragHandleHeight, 60, 60);     // Center (bigger), below drag handle
+    nextButton.setBounds (180, prevNextY, 50, 50);       // Right of center, vertically aligned
     stopButton.setBounds (0, 0, 0, 0); // Hide stop button
 
-    // Track name - centered in bottom area of module
-    trackNameLabel.setBounds (moduleX + 60, moduleY + 600, 360, 30);
+    // RESET button wrapper - positioned to the right of transport controls with space for orange drag handle
+    resetDraggableWrapper.setBounds (centerX + 120, transportY - 10, 80, 60);  // Extra height for drag handle
+    resetButton.setBounds (0, 20, 80, 40);  // Position button below drag handle (20px for orange bar)
+
+    // Track info wrapper - draggable container for track name with orange drag handle
+    auto labelAreaY = moduleY + 590;  // Position below transport controls
+    trackInfoDraggableWrapper.setBounds (moduleX + 60, labelAreaY - dragHandleHeight, 360, 30 + dragHandleHeight);  // Extra height for drag handle
+
+    // Position track label within wrapper (relative to wrapper, below drag handle)
+    trackNameLabel.setBounds (0, dragHandleHeight, 360, 30);  // Below drag handle
 
     // Position effect knob group WRAPPERS around edges - sized for 1400x900 window
     // NO drag handle visuals, so wrappers are same size as content
@@ -479,10 +596,15 @@ void MainComponent::resized()
     phaserDraggableWrapper.setBounds (1030, 500, 360, 200);
     phaserGroup->setBounds (0, 0, 360, 200);
 
+    // Master volume knob - positioned below phaser on the right side
+    volumeDraggableWrapper.setBounds (1030, 720, 360, 200);
+    volumeKnob->setBounds (0, 0, 360, 200);
+
     // Filter type buttons (positioned relative to filter GROUP, not wrapper)
-    filterHPButton.setBounds (175, 115, 40, 40);  // HP button
-    filterLPButton.setBounds (220, 115, 40, 40);  // LP button
-    filterBPButton.setBounds (265, 115, 40, 40);  // BP button
+    // Moved DOWN to Y=160 so they don't overlap with slider2 (GAIN slider at Y=120)
+    filterHPButton.setBounds (175, 160, 40, 40);  // HP button
+    filterLPButton.setBounds (220, 160, 40, 40);  // LP button
+    filterBPButton.setBounds (265, 160, 40, 40);  // BP button
 }
 
 void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
@@ -542,6 +664,10 @@ void MainComponent::loadTrack (int index)
     pitchKnob.setValue (0.0, juce::dontSendNotification);
     currentPitchSemitones = 0.0;
 
+    // Reset effects to clear any delay/reverb tail from previous track
+    effectsProcessor.reset();
+    DBG ("Effects reset on track change - no residue");
+
     auto file = trackFiles[index];
     auto* reader = formatManager.createReaderFor (file);
 
@@ -573,6 +699,15 @@ void MainComponent::loadTracksFromFolder (const juce::File& folder)
     folder.findChildFiles (files, juce::File::findFiles, true, "*.mp3;*.wav;*.aiff;*.aif;*.m4a;*.flac");
 
     trackFiles.addArray (files);
+
+    // SHUFFLE tracks randomly on every startup for randomized playback order
+    if (!trackFiles.isEmpty())
+    {
+        std::random_device rd;
+        std::mt19937 rng (rd());
+        std::shuffle (trackFiles.begin(), trackFiles.end(), rng);
+        DBG ("Shuffled " << trackFiles.size() << " tracks into random order");
+    }
 
     DBG ("Loaded " << trackFiles.size() << " tracks");
 
@@ -613,6 +748,10 @@ void MainComponent::playButtonClicked()
         transportSource.stop();
         state = Paused;
         playButton.setButtonText ("Play");  // Changes icon to play triangle
+
+        // Reset effects to clear any delay/reverb tail
+        effectsProcessor.reset();
+        DBG ("Effects reset on pause - no residue");
     }
 }
 
@@ -622,6 +761,10 @@ void MainComponent::stopButtonClicked()
     transportSource.setPosition (0);
     state = Stopped;
     playButton.setButtonText ("Play");
+
+    // Reset effects to clear any delay/reverb tail
+    effectsProcessor.reset();
+    DBG ("Effects reset on stop - no residue");
 }
 
 void MainComponent::nextButtonClicked()
@@ -697,6 +840,8 @@ void MainComponent::saveComponentPositions()
 
     saveBounds ("FxButton", fxDraggableWrapper);
     saveBounds ("Led", ledDraggableWrapper);
+    saveBounds ("TrackInfo", trackInfoDraggableWrapper);
+    saveBounds ("Transport", transportDraggableWrapper);
     saveBounds ("Phaser", phaserDraggableWrapper);
     saveBounds ("Delay", delayDraggableWrapper);
     saveBounds ("Chorus", chorusDraggableWrapper);
@@ -704,6 +849,8 @@ void MainComponent::saveComponentPositions()
     saveBounds ("Reverb", reverbDraggableWrapper);
     saveBounds ("Filter", filterDraggableWrapper);
     saveBounds ("Time", timeDraggableWrapper);
+    saveBounds ("Volume", volumeDraggableWrapper);
+    saveBounds ("Reset", resetDraggableWrapper);
 
     // Write to file
     xml.writeTo (propertiesFile);
@@ -748,6 +895,8 @@ void MainComponent::loadComponentPositions()
 
     loadBounds ("FxButton", fxDraggableWrapper);
     loadBounds ("Led", ledDraggableWrapper);
+    loadBounds ("TrackInfo", trackInfoDraggableWrapper);
+    loadBounds ("Transport", transportDraggableWrapper);
     loadBounds ("Phaser", phaserDraggableWrapper);
     loadBounds ("Delay", delayDraggableWrapper);
     loadBounds ("Chorus", chorusDraggableWrapper);
@@ -755,6 +904,8 @@ void MainComponent::loadComponentPositions()
     loadBounds ("Reverb", reverbDraggableWrapper);
     loadBounds ("Filter", filterDraggableWrapper);
     loadBounds ("Time", timeDraggableWrapper);
+    loadBounds ("Volume", volumeDraggableWrapper);
+    loadBounds ("Reset", resetDraggableWrapper);
 
     DBG ("Loaded component positions from: " << propertiesFile.getFullPathName());
 }

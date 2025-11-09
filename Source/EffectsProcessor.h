@@ -1,10 +1,9 @@
 #pragma once
 
 #include <JuceHeader.h>
-#include "SoundTouch/SoundTouch.h"
 
 /**
- * Professional effects processor using JUCE DSP + SoundTouch
+ * Professional effects processor using JUCE DSP
  * Matches the ModularRadio Swift app effect chain
  */
 class EffectsProcessor
@@ -44,26 +43,10 @@ public:
             return std::tanh (x);
         };
 
-        // Initialize SoundTouch for pitch shifting and time stretching
-        pitchShifter.setSampleRate (static_cast<uint> (spec.sampleRate));
-        pitchShifter.setChannels (static_cast<uint> (spec.numChannels));
-        pitchShifter.setPitchSemiTones (0.0f);  // No pitch change initially
-        pitchShifter.setTempo (1.0f);           // No time stretch (pitch-only mode)
-        pitchShifter.setRate (1.0f);            // Playback rate = 1.0
-        pitchShifter.setSetting (SETTING_USE_QUICKSEEK, 1);  // Faster processing
-        pitchShifter.setSetting (SETTING_USE_AA_FILTER, 1);  // Anti-aliasing
-
-        timeStretcher.setSampleRate (static_cast<uint> (spec.sampleRate));
-        timeStretcher.setChannels (static_cast<uint> (spec.numChannels));
-        timeStretcher.setPitchSemiTones (0.0f);  // No pitch change initially
-        timeStretcher.setTempo (1.0f);           // No time stretch initially
-        timeStretcher.setRate (1.0f);
-        timeStretcher.setSetting (SETTING_USE_QUICKSEEK, 1);
-        timeStretcher.setSetting (SETTING_USE_AA_FILTER, 1);
-
-        // Pre-allocate buffers for SoundTouch processing
-        soundTouchBuffer.resize (spec.maximumBlockSize * spec.numChannels);
-        soundTouchOutput.resize (spec.maximumBlockSize * spec.numChannels);
+        // Bitcrusher needs no preparation - simple algorithm
+        bitcrusherHoldSample[0] = 0.0f;
+        bitcrusherHoldSample[1] = 0.0f;
+        bitcrusherCounter = 0;
 
         sampleRate = spec.sampleRate;
     }
@@ -76,8 +59,11 @@ public:
         delayLine.reset();
         filter.reset();
         distortion.reset();
-        pitchShifter.clear();
-        timeStretcher.clear();
+
+        // Reset bitcrusher state
+        bitcrusherHoldSample[0] = 0.0f;
+        bitcrusherHoldSample[1] = 0.0f;
+        bitcrusherCounter = 0;
     }
 
     void process (juce::AudioBuffer<float>& buffer)
@@ -105,11 +91,15 @@ public:
             reverb.process (context);
 
         if (!filterBypassed)
+        {
             filter.process (context);
+            // Apply gain to filter output
+            block.multiplyBy (filterGain);
+        }
 
-        // Time effect: time-stretch + pitch together
-        if (!timeBypassed)
-            processTimeStretch (buffer);
+        // Bitcrusher effect: lo-fi digital degradation
+        if (!bitcrusherBypassed)
+            processBitcrusher (buffer);
     }
 
     // Phaser controls
@@ -130,7 +120,11 @@ public:
 
     void setPhaserBypassed (bool bypassed)
     {
-        phaserBypassed = bypassed;
+        if (bypassed != phaserBypassed)
+        {
+            phaserBypassed = bypassed;
+            phaser.reset();  // Clear internal state to prevent pops
+        }
     }
 
     void setPhaserFeedback (float feedback)
@@ -156,7 +150,11 @@ public:
 
     void setDelayBypassed (bool bypassed)
     {
-        delayBypassed = bypassed;
+        if (bypassed != delayBypassed)
+        {
+            delayBypassed = bypassed;
+            delayLine.reset();  // Clear delay buffer to prevent pops
+        }
     }
 
     // Chorus controls
@@ -177,7 +175,11 @@ public:
 
     void setChorusBypassed (bool bypassed)
     {
-        chorusBypassed = bypassed;
+        if (bypassed != chorusBypassed)
+        {
+            chorusBypassed = bypassed;
+            chorus.reset();  // Clear internal state to prevent pops
+        }
     }
 
     void setChorusFeedback (float feedback)
@@ -198,7 +200,11 @@ public:
 
     void setDistortionBypassed (bool bypassed)
     {
-        distortionBypassed = bypassed;
+        if (bypassed != distortionBypassed)
+        {
+            distortionBypassed = bypassed;
+            distortion.reset();  // Clear internal state to prevent pops
+        }
     }
 
     // Reverb controls
@@ -223,7 +229,11 @@ public:
 
     void setReverbBypassed (bool bypassed)
     {
-        reverbBypassed = bypassed;
+        if (bypassed != reverbBypassed)
+        {
+            reverbBypassed = bypassed;
+            reverb.reset();  // Clear reverb tail to prevent pops
+        }
     }
 
     // Filter controls
@@ -243,13 +253,26 @@ public:
     void setFilterType (int type)
     {
         // 0 = Low-pass, 1 = High-pass, 2 = Band-pass
-        filterType = type;
-        updateFilter();
+        if (type != filterType)
+        {
+            filterType = type;
+            updateFilter();
+            filter.reset();  // Clear filter state to prevent pops when changing type
+        }
+    }
+
+    void setFilterGain (float gain)
+    {
+        filterGain = 0.1f + gain * 1.9f;  // 0.1x to 2.0x gain
     }
 
     void setFilterBypassed (bool bypassed)
     {
-        filterBypassed = bypassed;
+        if (bypassed != filterBypassed)
+        {
+            filterBypassed = bypassed;
+            filter.reset();  // Clear filter state to prevent pops
+        }
     }
 
     // Pitch shift controls (for main knob) - PITCH ONLY, NO TIME STRETCH
@@ -272,27 +295,34 @@ public:
         return std::pow (2.0f, pitchShiftSemitones / 12.0f);
     }
 
-    // Time effect controls (pitch + time stretch)
-    void setTimeStretch (float amount)
+    // Bitcrusher controls
+    void setBitcrusherBitDepth (float depth)
     {
-        timeStretch = juce::jlimit (0.5f, 2.0f, amount);  // 0.5x to 2x speed
-        timeStretcher.setTempo (timeStretch);  // Apply time stretching
+        // Map 0-1 to 16 bits down to 1 bit
+        bitcrusherBitDepth = 1.0f + depth * 15.0f;  // 1 to 16 bits
     }
 
-    void setTimePitch (float semitones)
+    void setBitcrusherCrush (float crush)
     {
-        timePitch = juce::jlimit (-12.0f, 12.0f, semitones);
-        timeStretcher.setPitchSemiTones (timePitch);  // Apply pitch shift
+        // Map 0-1 to 1x to 32x sample rate reduction
+        bitcrusherCrush = 1.0f + crush * 31.0f;  // 1 to 32
     }
 
-    void setTimeMix (float mix)
+    void setBitcrusherMix (float mix)
     {
-        timeMix = juce::jlimit (0.0f, 1.0f, mix);
+        bitcrusherMix = juce::jlimit (0.0f, 1.0f, mix);
     }
 
-    void setTimeBypassed (bool bypassed)
+    void setBitcrusherBypassed (bool bypassed)
     {
-        timeBypassed = bypassed;
+        if (bypassed != bitcrusherBypassed)
+        {
+            bitcrusherBypassed = bypassed;
+            // Reset bitcrusher state
+            bitcrusherHoldSample[0] = 0.0f;
+            bitcrusherHoldSample[1] = 0.0f;
+            bitcrusherCounter = 0;
+        }
     }
 
 private:
@@ -304,13 +334,9 @@ private:
     juce::dsp::StateVariableTPTFilter<float> filter;
     juce::dsp::WaveShaper<float> distortion;
 
-    // SoundTouch for real-time pitch shifting and time stretching
-    soundtouch::SoundTouch pitchShifter;      // Main pitch knob: pitch-only (no time stretch)
-    soundtouch::SoundTouch timeStretcher;     // Time effect: time-stretch + pitch together
-
-    // Buffers for SoundTouch processing
-    std::vector<float> soundTouchBuffer;
-    std::vector<float> soundTouchOutput;
+    // BITCRUSHER effect - lo-fi digital degradation
+    float bitcrusherHoldSample[2] = {0.0f, 0.0f};  // Held samples for sample rate reduction
+    int bitcrusherCounter = 0;  // Counter for sample rate decimation
 
     // Effect parameters
     juce::Reverb::Parameters reverbParams;
@@ -324,13 +350,14 @@ private:
 
     float filterCutoff = 1000.0f;
     float filterResonance = 1.0f;
+    float filterGain = 1.0f;     // Output gain (0.1 to 2.0)
     int filterType = 0;  // 0=LP, 1=HP, 2=BP
 
     float pitchShiftSemitones = 0.0f;
 
-    float timeStretch = 1.0f;    // Time stretch amount (0.5x to 2x)
-    float timePitch = 0.0f;      // Pitch shift in semitones
-    float timeMix = 0.5f;        // Mix amount
+    float bitcrusherBitDepth = 16.0f;     // Bit depth (1 to 16 bits)
+    float bitcrusherCrush = 1.0f;         // Sample rate reduction factor (1 to 32)
+    float bitcrusherMix = 0.5f;           // Mix amount
 
     double sampleRate = 44100.0;
 
@@ -342,7 +369,7 @@ private:
     bool reverbBypassed = true;
     bool filterBypassed = true;
     bool pitchBypassed = false;  // Main pitch knob is ALWAYS active (not a toggleable effect)
-    bool timeBypassed = true;
+    bool bitcrusherBypassed = true;
 
     // Helper functions
     void processDelay (juce::AudioBuffer<float>& buffer)
@@ -371,41 +398,33 @@ private:
 
     void processDistortion (juce::AudioBuffer<float>& buffer)
     {
-        juce::dsp::AudioBlock<float> block (buffer);
+        if (distortionMix < 0.01f)
+            return;  // Bypassed - do nothing
 
-        // Apply drive
+        // Store REAL dry signal BEFORE any processing
+        juce::AudioBuffer<float> dryBuffer (buffer.getNumChannels(), buffer.getNumSamples());
+        dryBuffer.makeCopyOf (buffer);
+
+        // Apply drive to buffer (this will become the wet signal)
+        juce::dsp::AudioBlock<float> block (buffer);
         block.multiplyBy (distortionDrive);
 
-        // Apply waveshaping
+        // Apply waveshaping to driven signal
         juce::dsp::ProcessContextReplacing<float> context (block);
+        distortion.process (context);
 
-        if (distortionMix > 0.01f)
+        // Mix dry (normal level) with wet (distorted and loud)
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         {
-            // Store dry signal
-            juce::AudioBuffer<float> dryBuffer (buffer.getNumChannels(), buffer.getNumSamples());
-            dryBuffer.makeCopyOf (buffer);
+            auto* output = buffer.getWritePointer (ch);
+            auto* dry = dryBuffer.getReadPointer (ch);
 
-            // Process wet signal
-            distortion.process (context);
-
-            // Mix dry/wet
-            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
             {
-                auto* wet = buffer.getWritePointer (ch);
-                auto* dry = dryBuffer.getReadPointer (ch);
-
-                for (int i = 0; i < buffer.getNumSamples(); ++i)
-                {
-                    wet[i] = dry[i] * (1.0f - distortionMix) + wet[i] * distortionMix;
-                }
+                // Wet signal is already amplified by distortionDrive and distorted
+                // Mix with original dry signal at normal level
+                output[i] = dry[i] * (1.0f - distortionMix) + output[i] * distortionMix;
             }
-
-            // Compensate for drive gain
-            block.multiplyBy (1.0f / distortionDrive);
-        }
-        else
-        {
-            block.multiplyBy (1.0f / distortionDrive);
         }
     }
 
@@ -430,44 +449,8 @@ private:
         filter.setResonance (filterResonance);
     }
 
-    // Process main pitch shift (pitch-only, no time stretch)
-    void processPitchShift (juce::AudioBuffer<float>& buffer)
-    {
-        int numSamples = buffer.getNumSamples();
-        int numChannels = buffer.getNumChannels();
-
-        // Interleave samples for SoundTouch (it expects interleaved stereo)
-        for (int ch = 0; ch < numChannels; ++ch)
-        {
-            auto* channelData = buffer.getReadPointer (ch);
-            for (int i = 0; i < numSamples; ++i)
-            {
-                soundTouchBuffer[i * numChannels + ch] = channelData[i];
-            }
-        }
-
-        // Process with SoundTouch
-        pitchShifter.putSamples (soundTouchBuffer.data(), numSamples);
-        uint receivedSamples = pitchShifter.receiveSamples (soundTouchOutput.data(), numSamples);
-
-        // De-interleave and copy back to buffer
-        for (int ch = 0; ch < numChannels; ++ch)
-        {
-            auto* channelData = buffer.getWritePointer (ch);
-            for (uint i = 0; i < receivedSamples; ++i)
-            {
-                channelData[i] = soundTouchOutput[i * numChannels + ch];
-            }
-            // Clear remaining samples if we got fewer than expected
-            for (uint i = receivedSamples; i < static_cast<uint>(numSamples); ++i)
-            {
-                channelData[i] = 0.0f;
-            }
-        }
-    }
-
-    // Process time-stretch + pitch (Time effect)
-    void processTimeStretch (juce::AudioBuffer<float>& buffer)
+    // Process BITCRUSHER effect - lo-fi digital degradation
+    void processBitcrusher (juce::AudioBuffer<float>& buffer)
     {
         int numSamples = buffer.getNumSamples();
         int numChannels = buffer.getNumChannels();
@@ -476,35 +459,49 @@ private:
         juce::AudioBuffer<float> dryBuffer (numChannels, numSamples);
         dryBuffer.makeCopyOf (buffer);
 
-        // Interleave samples for SoundTouch
-        for (int ch = 0; ch < numChannels; ++ch)
-        {
-            auto* channelData = buffer.getReadPointer (ch);
-            for (int i = 0; i < numSamples; ++i)
-            {
-                soundTouchBuffer[i * numChannels + ch] = channelData[i];
-            }
-        }
+        // Calculate quantization step size based on bit depth
+        float levels = std::pow (2.0f, bitcrusherBitDepth);  // e.g., 16 bits = 65536 levels
+        float stepSize = 2.0f / levels;  // Audio range is -1.0 to +1.0
 
-        // Process with SoundTouch (time-stretch + pitch)
-        timeStretcher.putSamples (soundTouchBuffer.data(), numSamples);
-        uint receivedSamples = timeStretcher.receiveSamples (soundTouchOutput.data(), numSamples);
+        int crushFactor = static_cast<int> (bitcrusherCrush);  // Sample rate reduction factor
 
-        // De-interleave and mix wet/dry
+        // Process each channel
         for (int ch = 0; ch < numChannels; ++ch)
         {
             auto* channelData = buffer.getWritePointer (ch);
-            auto* dryData = dryBuffer.getReadPointer (ch);
 
-            for (uint i = 0; i < receivedSamples; ++i)
+            for (int i = 0; i < numSamples; ++i)
             {
-                float wet = soundTouchOutput[i * numChannels + ch];
-                channelData[i] = dryData[i] * (1.0f - timeMix) + wet * timeMix;
+                // Sample rate reduction (hold samples)
+                if (bitcrusherCounter == 0)
+                {
+                    // Update held sample
+                    float input = channelData[i];
+
+                    // Bit depth reduction (quantization)
+                    float quantized = std::floor (input / stepSize) * stepSize;
+                    quantized = juce::jlimit (-1.0f, 1.0f, quantized);
+
+                    bitcrusherHoldSample[ch] = quantized;
+                }
+
+                // Output the held sample
+                channelData[i] = bitcrusherHoldSample[ch];
+
+                // Increment counter
+                bitcrusherCounter = (bitcrusherCounter + 1) % crushFactor;
             }
-            // Mix dry signal for remaining samples
-            for (uint i = receivedSamples; i < static_cast<uint>(numSamples); ++i)
+        }
+
+        // Mix wet/dry
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* out = buffer.getWritePointer (ch);
+            auto* dry = dryBuffer.getReadPointer (ch);
+
+            for (int i = 0; i < numSamples; ++i)
             {
-                channelData[i] = dryData[i];
+                out[i] = dry[i] * (1.0f - bitcrusherMix) + out[i] * bitcrusherMix;
             }
         }
     }
