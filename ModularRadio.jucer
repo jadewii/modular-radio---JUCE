@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="ModRad" name="ModularRadio" projectType="guiapp" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.0.0">
+<JUCERPROJECT id="ModRad" name="ModularRadio" projectType="audioplug" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.0.0"
+              companyName="Modular Radio" pluginManufacturerCode="MdRd" pluginCode="Mrad"
+              pluginFormats="buildVST,buildVST3,buildAU,buildAUv3,buildStandalone"
+              pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn"
+              pluginName="Modular Radio" pluginDesc="Professional DJ effects processor with modular routing"
+              pluginManufacturer="Modular Radio" aaxIdentifier="com.modularradio.modularradio"
+              pluginAAXCategory="2">
   <MAINGROUP id="IdsOCK" name="ModularRadio">
     <GROUP id="{F6E7D8C9-A1B2-C3D4-E5F6-789012345678}" name="Source">
       <FILE id="X9Y8Z7" name="MainComponent.cpp" compile="1" resource="0"
             file="Source/MainComponent.cpp"/>
       <FILE id="W6V5U4" name="MainComponent.h" compile="0" resource="0" file="Source/MainComponent.h"/>
-      <FILE id="E1F2F3" name="EffectsProcessor.h" compile="0" resource="0" file="Source/EffectsProcessor.h"/>
+      <FILE id="E1F2F3" name="EffectsProcessor.h" compile="0" resource="0"
+            file="Source/EffectsProcessor.h"/>
       <FILE id="T3S2R1" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
     </GROUP>
   </MAINGROUP>
