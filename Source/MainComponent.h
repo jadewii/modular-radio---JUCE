@@ -83,72 +83,7 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SmoothResamplingSource)
 };
 
-//==============================================================================
-// Helper class to make any component draggable with a visible drag handle
-class DraggableComponent : public juce::Component
-{
-public:
-    DraggableComponent (bool showDragHandle = false)
-        : showHandle (showDragHandle)
-    {
-        // Intercept mouse clicks on empty space, but NOT on child components
-        // This allows buttons, sliders, etc. to handle their own clicks properly
-        setInterceptsMouseClicks (true, false);
-    }
-
-    void paint (juce::Graphics& g) override
-    {
-        // Draw visible orange drag handle if requested
-        if (showHandle)
-        {
-            g.setColour (juce::Colours::orange);
-            g.fillRect (0, 0, getWidth(), 20);  // Orange bar at top
-            g.setColour (juce::Colours::white);
-            g.setFont (juce::Font (juce::FontOptions().withHeight(10.0f)).boldened());
-            g.drawText ("DRAG", 0, 0, getWidth(), 20, juce::Justification::centred);
-        }
-    }
-
-    void mouseDown (const juce::MouseEvent& e) override
-    {
-        // Only respond to clicks on empty space (not on children)
-        // Start dragging the entire component
-        dragger.startDraggingComponent (this, e);
-        isDragging = true;
-    }
-
-    void mouseDrag (const juce::MouseEvent& e) override
-    {
-        if (isDragging)
-        {
-            dragger.dragComponent (this, e, nullptr);
-        }
-    }
-
-    void mouseUp (const juce::MouseEvent& e) override
-    {
-        if (isDragging)
-        {
-            isDragging = false;
-            // Notify that dragging ended so position can be saved
-            if (onDragEnd)
-                onDragEnd();
-        }
-    }
-
-    std::function<void()> onDragEnd;
-
-    void setShowDragHandle (bool show)
-    {
-        showHandle = show;
-        repaint();
-    }
-
-private:
-    juce::ComponentDragger dragger;
-    bool isDragging = false;
-    bool showHandle = false;
-};
+// DraggableComponent class COMPLETELY REMOVED - all components are now in FIXED positions
 
 //==============================================================================
 class MainComponent : public juce::AudioAppComponent,
@@ -213,11 +148,7 @@ private:
     juce::Label ledIndicator;  // LED shows playback status
     ModularRadioLookAndFeel customLookAndFeel;
 
-    // Draggable wrappers for FX button, LED, track info, and transport controls
-    DraggableComponent fxDraggableWrapper;
-    DraggableComponent ledDraggableWrapper;
-    DraggableComponent trackInfoDraggableWrapper;  // Wrapper for song name
-    DraggableComponent transportDraggableWrapper;   // Wrapper for play/next/previous buttons
+    // Draggable wrappers COMPLETELY REMOVED - all components are now in FIXED positions
 
     // Effect controls - custom knob groups (1 knob + 2 sliders each)
     std::unique_ptr<EffectKnobGroup> phaserGroup;
@@ -231,16 +162,7 @@ private:
     // Master volume control
     std::unique_ptr<VolumeKnob> volumeKnob;
 
-    // Draggable wrappers for all effect groups
-    DraggableComponent phaserDraggableWrapper;
-    DraggableComponent delayDraggableWrapper;
-    DraggableComponent chorusDraggableWrapper;
-    DraggableComponent distortionDraggableWrapper;
-    DraggableComponent reverbDraggableWrapper;
-    DraggableComponent filterDraggableWrapper;
-    DraggableComponent timeDraggableWrapper;
-    DraggableComponent volumeDraggableWrapper;
-    DraggableComponent resetDraggableWrapper;
+    // All draggable wrappers COMPLETELY REMOVED - components are now in FIXED positions
 
     // Filter type buttons
     juce::ToggleButton filterHPButton;
@@ -260,9 +182,7 @@ private:
     void previousButtonClicked();
     void updateTimeDisplay();
 
-    // Position persistence
-    void saveComponentPositions();
-    void loadComponentPositions();
+    // Position persistence COMPLETELY REMOVED - all components are now in FIXED positions
 
     enum TransportState
     {
