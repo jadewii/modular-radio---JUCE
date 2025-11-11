@@ -1,0 +1,111 @@
+MainComponent::MainComponent()
+{
+    // Register audio formats
+    formatManager.registerBasicFormats();
+    transportSource.addChangeListener (this);
+
+    // Load background image
+    auto resourcesFolder = juce::File::getSpecialLocation (juce::File::currentApplicationFile)
+                               .getChildFile ("Contents")
+                               .getChildFile ("Resources");
+
+    auto bgImageFile = resourcesFolder.getChildFile ("modback.png");
+    if (bgImageFile.existsAsFile())
+    {
+        backgroundImage = juce::ImageFileFormat::loadFrom (bgImageFile);
+        DBG ("Background image loaded: " << bgImageFile.getFullPathName());
+    }
+
+    // Transport buttons
+    playButton.setButtonText ("Play");
+    playButton.onClick = [this] { playButtonClicked(); };
+    addAndMakeVisible (playButton);
+
+    stopButton.setButtonText ("Stop");
+    stopButton.onClick = [this] { stopButtonClicked(); };
+    addAndMakeVisible (stopButton);
+
+    nextButton.setButtonText ("Next");
+    nextButton.onClick = [this] { nextButtonClicked(); };
+    addAndMakeVisible (nextButton);
+
+    previousButton.setButtonText ("Previous");
+    previousButton.onClick = [this] { previousButtonClicked(); };
+    addAndMakeVisible (previousButton);
+
+    // Track labels
+    trackNameLabel.setText ("No track loaded", juce::dontSendNotification);
+    trackNameLabel.setJustificationType (juce::Justification::centred);
+    trackNameLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+    addAndMakeVisible (trackNameLabel);
+
+    timeLabel.setText ("0:00 / 0:00", juce::dontSendNotification);
+    timeLabel.setJustificationType (juce::Justification::centred);
+    timeLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    addAndMakeVisible (timeLabel);
+
+    // Create effect knob groups (1 knob + 2 sliders each)
+    // Phaser: Knob=Rate, Sliders: Depth, Mix
+    phaserGroup = std::make_unique<EffectKnobGroup> ("Phaser", "DEPTH", "MIX",
+        juce::Colours::cyan,
+        [this](float v) { effectsProcessor.setPhaserRate(v); },
+        [this](float v) { effectsProcessor.setPhaserDepth(v); },
+        [this](float v) { effectsProcessor.setPhaserMix(v); });
+    phaserGroup->setBypassCallback ([this](bool bypassed) { effectsProcessor.setPhaserBypassed(bypassed); });
+    phaserGroup->getBypassButton().setToggleState (false, juce::dontSendNotification);
+    addAndMakeVisible (phaserGroup.get());
+
+    // Delay: Knob=Mix, Sliders: Time, Feedback
+    delayGroup = std::make_unique<EffectKnobGroup> ("Delay", "TIME", "FDBK",
+        juce::Colours::red,
+        [this](float v) { effectsProcessor.setDelayMix(v); },
+        [this](float v) { effectsProcessor.setDelayTime(v * 3.0f); },  // 0-3 seconds
+        [this](float v) { effectsProcessor.setDelayFeedback(v * 0.95f); });  // 0-0.95
+    delayGroup->setBypassCallback ([this](bool bypassed) { effectsProcessor.setDelayBypassed(bypassed); });
+    addAndMakeVisible (delayGroup.get());
+
+    // Chorus: Knob=Rate, Sliders: Depth, Mix
+    chorusGroup = std::make_unique<EffectKnobGroup> ("Chorus", "DEPTH", "MIX",
+        juce::Colours::blue,
+        [this](float v) { effectsProcessor.setChorusRate(v); },
+        [this](float v) { effectsProcessor.setChorusDepth(v); },
+        [this](float v) { effectsProcessor.setChorusMix(v); });
+    chorusGroup->setBypassCallback ([this](bool bypassed) { effectsProcessor.setChorusBypassed(bypassed); });
+    addAndMakeVisible (chorusGroup.get());
+
+    // Distortion: Knob=Drive, Sliders: Mix, (dummy)
+    distortionGroup = std::make_unique<EffectKnobGroup> ("Distortion", "MIX", "",
+        juce::Colours::orange,
+        [this](float v) { effectsProcessor.setDistortionDrive(v); },
+        [this](float v) { effectsProcessor.setDistortionMix(v); },
+        [this](float v) { });  // No third parameter
+    distortionGroup->setBypassCallback ([this](bool bypassed) { effectsProcessor.setDistortionBypassed(bypassed); });
+    addAndMakeVisible (distortionGroup.get());
+
+    // Reverb: Knob=Mix, Sliders: Size, Damping
+    reverbGroup = std::make_unique<EffectKnobGroup> ("Reverb", "SIZE", "DAMP",
+        juce::Colours::yellow,
+        [this](float v) { effectsProcessor.setReverbMix(v); },
+        [this](float v) { effectsProcessor.setReverbSize(v); },
+        [this](float v) { effectsProcessor.setReverbDamping(v); });
+    reverbGroup->setBypassCallback ([this](bool bypassed) { effectsProcessor.setReverbBypassed(bypassed); });
+    addAndMakeVisible (reverbGroup.get());
+
+    // Filter: Knob=Cutoff, Sliders: Resonance, Type (as slider)
+    filterGroup = std::make_unique<EffectKnobGroup> ("Filter", "RESO", "TYPE",
+        juce::Colours::green,
+        [this](float v) { effectsProcessor.setFilterCutoff(v); },
+        [this](float v) { effectsProcessor.setFilterResonance(v); },
+        [this](float v) { effectsProcessor.setFilterType(static_cast<int>(v * 2.0f)); });  // 0-2 (LP/HP/BP)
+    filterGroup->setBypassCallback ([this](bool bypassed) { effectsProcessor.setFilterBypassed(bypassed); });
+    addAndMakeVisible (filterGroup.get());
+
+    // Load bundled music
+    loadBundledMusic();
+
+    // Start timer
+    startTimer (100);
+
+    setSize (1200, 834);  // iPad 11" landscape size from Swift app
+    setAudioChannels (0, 2);
+}

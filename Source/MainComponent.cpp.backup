@@ -1,0 +1,735 @@
+#include "MainComponent.h"
+
+MainComponent::MainComponent()
+{
+    // Register audio formats (MP3, WAV, AIFF, etc.)
+    formatManager.registerBasicFormats();
+
+    // Set up transport source
+    transportSource.addChangeListener (this);
+
+    // Transport buttons
+    playButton.setButtonText ("Play");
+    playButton.onClick = [this] { playButtonClicked(); };
+    addAndMakeVisible (playButton);
+
+    stopButton.setButtonText ("Stop");
+    stopButton.onClick = [this] { stopButtonClicked(); };
+    addAndMakeVisible (stopButton);
+
+    nextButton.setButtonText ("Next");
+    nextButton.onClick = [this] { nextButtonClicked(); };
+    addAndMakeVisible (nextButton);
+
+    previousButton.setButtonText ("Previous");
+    previousButton.onClick = [this] { previousButtonClicked(); };
+    addAndMakeVisible (previousButton);
+
+    // Load bundled music automatically
+    loadBundledMusic();
+
+    // Track name display
+    trackNameLabel.setText ("No track loaded", juce::dontSendNotification);
+    trackNameLabel.setJustificationType (juce::Justification::centred);
+    trackNameLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+    addAndMakeVisible (trackNameLabel);
+
+    // Time display
+    timeLabel.setText ("0:00 / 0:00", juce::dontSendNotification);
+    timeLabel.setJustificationType (juce::Justification::centred);
+    timeLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    addAndMakeVisible (timeLabel);
+
+    // Master gain slider
+    masterGainSlider.setSliderStyle (juce::Slider::Rotary);
+    masterGainSlider.setRange (0.0, 1.0, 0.01);
+    masterGainSlider.setValue (0.7);
+    masterGainSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    masterGainSlider.onValueChange = [this]
+    {
+        masterGain = static_cast<float> (masterGainSlider.getValue());
+    };
+    addAndMakeVisible (masterGainSlider);
+
+    masterGainLabel.setText ("Master", juce::dontSendNotification);
+    masterGainLabel.attachToComponent (&masterGainSlider, false);
+    masterGainLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (masterGainLabel);
+
+    // Phaser controls
+    phaserRateSlider.setSliderStyle (juce::Slider::Rotary);
+    phaserRateSlider.setRange (0.0, 1.0, 0.01);
+    phaserRateSlider.setValue (0.5);
+    phaserRateSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    phaserRateSlider.onValueChange = [this]
+    {
+        effectsProcessor.setPhaserRate (static_cast<float> (phaserRateSlider.getValue()));
+    };
+    addAndMakeVisible (phaserRateSlider);
+
+    phaserRateLabel.setText ("Rate", juce::dontSendNotification);
+    phaserRateLabel.attachToComponent (&phaserRateSlider, false);
+    phaserRateLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (phaserRateLabel);
+
+    phaserDepthSlider.setSliderStyle (juce::Slider::Rotary);
+    phaserDepthSlider.setRange (0.0, 1.0, 0.01);
+    phaserDepthSlider.setValue (0.5);
+    phaserDepthSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    phaserDepthSlider.onValueChange = [this]
+    {
+        effectsProcessor.setPhaserDepth (static_cast<float> (phaserDepthSlider.getValue()));
+    };
+    addAndMakeVisible (phaserDepthSlider);
+
+    phaserDepthLabel.setText ("Depth", juce::dontSendNotification);
+    phaserDepthLabel.attachToComponent (&phaserDepthSlider, false);
+    phaserDepthLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (phaserDepthLabel);
+
+    phaserMixSlider.setSliderStyle (juce::Slider::Rotary);
+    phaserMixSlider.setRange (0.0, 1.0, 0.01);
+    phaserMixSlider.setValue (0.5);
+    phaserMixSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    phaserMixSlider.onValueChange = [this]
+    {
+        effectsProcessor.setPhaserMix (static_cast<float> (phaserMixSlider.getValue()));
+    };
+    addAndMakeVisible (phaserMixSlider);
+
+    phaserMixLabel.setText ("Mix", juce::dontSendNotification);
+    phaserMixLabel.attachToComponent (&phaserMixSlider, false);
+    phaserMixLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (phaserMixLabel);
+
+    phaserBypassButton.setButtonText ("Bypass Phaser");
+    phaserBypassButton.onClick = [this]
+    {
+        bool bypassed = phaserBypassButton.getToggleState();
+        effectsProcessor.setPhaserBypassed (bypassed);
+    };
+    addAndMakeVisible (phaserBypassButton);
+
+    // Delay controls
+    delayTimeSlider.setSliderStyle (juce::Slider::Rotary);
+    delayTimeSlider.setRange (0.0, 3.0, 0.01);
+    delayTimeSlider.setValue (0.5);
+    delayTimeSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    delayTimeSlider.onValueChange = [this]
+    {
+        effectsProcessor.setDelayTime (static_cast<float> (delayTimeSlider.getValue()));
+    };
+    addAndMakeVisible (delayTimeSlider);
+
+    delayTimeLabel.setText ("Time", juce::dontSendNotification);
+    delayTimeLabel.attachToComponent (&delayTimeSlider, false);
+    delayTimeLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (delayTimeLabel);
+
+    delayFeedbackSlider.setSliderStyle (juce::Slider::Rotary);
+    delayFeedbackSlider.setRange (0.0, 0.95, 0.01);
+    delayFeedbackSlider.setValue (0.3);
+    delayFeedbackSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    delayFeedbackSlider.onValueChange = [this]
+    {
+        effectsProcessor.setDelayFeedback (static_cast<float> (delayFeedbackSlider.getValue()));
+    };
+    addAndMakeVisible (delayFeedbackSlider);
+
+    delayFeedbackLabel.setText ("Feedback", juce::dontSendNotification);
+    delayFeedbackLabel.attachToComponent (&delayFeedbackSlider, false);
+    delayFeedbackLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (delayFeedbackLabel);
+
+    delayMixSlider.setSliderStyle (juce::Slider::Rotary);
+    delayMixSlider.setRange (0.0, 1.0, 0.01);
+    delayMixSlider.setValue (0.5);
+    delayMixSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    delayMixSlider.onValueChange = [this]
+    {
+        effectsProcessor.setDelayMix (static_cast<float> (delayMixSlider.getValue()));
+    };
+    addAndMakeVisible (delayMixSlider);
+
+    delayMixLabel.setText ("Mix", juce::dontSendNotification);
+    delayMixLabel.attachToComponent (&delayMixSlider, false);
+    delayMixLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (delayMixLabel);
+
+    delayBypassButton.setButtonText ("Bypass Delay");
+    delayBypassButton.setToggleState (true, juce::dontSendNotification);  // Start bypassed
+    delayBypassButton.onClick = [this]
+    {
+        bool bypassed = delayBypassButton.getToggleState();
+        effectsProcessor.setDelayBypassed (bypassed);
+    };
+    addAndMakeVisible (delayBypassButton);
+
+    // Chorus controls
+    chorusRateSlider.setSliderStyle (juce::Slider::Rotary);
+    chorusRateSlider.setRange (0.0, 1.0, 0.01);
+    chorusRateSlider.setValue (0.5);
+    chorusRateSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    chorusRateSlider.onValueChange = [this]
+    {
+        effectsProcessor.setChorusRate (static_cast<float> (chorusRateSlider.getValue()));
+    };
+    addAndMakeVisible (chorusRateSlider);
+
+    chorusRateLabel.setText ("Rate", juce::dontSendNotification);
+    chorusRateLabel.attachToComponent (&chorusRateSlider, false);
+    chorusRateLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (chorusRateLabel);
+
+    chorusDepthSlider.setSliderStyle (juce::Slider::Rotary);
+    chorusDepthSlider.setRange (0.0, 1.0, 0.01);
+    chorusDepthSlider.setValue (0.5);
+    chorusDepthSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    chorusDepthSlider.onValueChange = [this]
+    {
+        effectsProcessor.setChorusDepth (static_cast<float> (chorusDepthSlider.getValue()));
+    };
+    addAndMakeVisible (chorusDepthSlider);
+
+    chorusDepthLabel.setText ("Depth", juce::dontSendNotification);
+    chorusDepthLabel.attachToComponent (&chorusDepthSlider, false);
+    chorusDepthLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (chorusDepthLabel);
+
+    chorusMixSlider.setSliderStyle (juce::Slider::Rotary);
+    chorusMixSlider.setRange (0.0, 1.0, 0.01);
+    chorusMixSlider.setValue (0.5);
+    chorusMixSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    chorusMixSlider.onValueChange = [this]
+    {
+        effectsProcessor.setChorusMix (static_cast<float> (chorusMixSlider.getValue()));
+    };
+    addAndMakeVisible (chorusMixSlider);
+
+    chorusMixLabel.setText ("Mix", juce::dontSendNotification);
+    chorusMixLabel.attachToComponent (&chorusMixSlider, false);
+    chorusMixLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (chorusMixLabel);
+
+    chorusBypassButton.setButtonText ("Bypass Chorus");
+    chorusBypassButton.setToggleState (true, juce::dontSendNotification);  // Start bypassed
+    chorusBypassButton.onClick = [this]
+    {
+        bool bypassed = chorusBypassButton.getToggleState();
+        effectsProcessor.setChorusBypassed (bypassed);
+    };
+    addAndMakeVisible (chorusBypassButton);
+
+    // Distortion controls (only 2 parameters + bypass)
+    distortionDriveSlider.setSliderStyle (juce::Slider::Rotary);
+    distortionDriveSlider.setRange (0.0, 1.0, 0.01);
+    distortionDriveSlider.setValue (0.5);
+    distortionDriveSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    distortionDriveSlider.onValueChange = [this]
+    {
+        effectsProcessor.setDistortionDrive (static_cast<float> (distortionDriveSlider.getValue()));
+    };
+    addAndMakeVisible (distortionDriveSlider);
+
+    distortionDriveLabel.setText ("Drive", juce::dontSendNotification);
+    distortionDriveLabel.attachToComponent (&distortionDriveSlider, false);
+    distortionDriveLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (distortionDriveLabel);
+
+    distortionMixSlider.setSliderStyle (juce::Slider::Rotary);
+    distortionMixSlider.setRange (0.0, 1.0, 0.01);
+    distortionMixSlider.setValue (0.5);
+    distortionMixSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    distortionMixSlider.onValueChange = [this]
+    {
+        effectsProcessor.setDistortionMix (static_cast<float> (distortionMixSlider.getValue()));
+    };
+    addAndMakeVisible (distortionMixSlider);
+
+    distortionMixLabel.setText ("Mix", juce::dontSendNotification);
+    distortionMixLabel.attachToComponent (&distortionMixSlider, false);
+    distortionMixLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (distortionMixLabel);
+
+    distortionBypassButton.setButtonText ("Bypass Distortion");
+    distortionBypassButton.setToggleState (true, juce::dontSendNotification);
+    distortionBypassButton.onClick = [this]
+    {
+        bool bypassed = distortionBypassButton.getToggleState();
+        effectsProcessor.setDistortionBypassed (bypassed);
+    };
+    addAndMakeVisible (distortionBypassButton);
+
+    // Reverb controls
+    reverbSizeSlider.setSliderStyle (juce::Slider::Rotary);
+    reverbSizeSlider.setRange (0.0, 1.0, 0.01);
+    reverbSizeSlider.setValue (0.8);
+    reverbSizeSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    reverbSizeSlider.onValueChange = [this]
+    {
+        effectsProcessor.setReverbSize (static_cast<float> (reverbSizeSlider.getValue()));
+    };
+    addAndMakeVisible (reverbSizeSlider);
+
+    reverbSizeLabel.setText ("Size", juce::dontSendNotification);
+    reverbSizeLabel.attachToComponent (&reverbSizeSlider, false);
+    reverbSizeLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (reverbSizeLabel);
+
+    reverbDampingSlider.setSliderStyle (juce::Slider::Rotary);
+    reverbDampingSlider.setRange (0.0, 1.0, 0.01);
+    reverbDampingSlider.setValue (0.5);
+    reverbDampingSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    reverbDampingSlider.onValueChange = [this]
+    {
+        effectsProcessor.setReverbDamping (static_cast<float> (reverbDampingSlider.getValue()));
+    };
+    addAndMakeVisible (reverbDampingSlider);
+
+    reverbDampingLabel.setText ("Damping", juce::dontSendNotification);
+    reverbDampingLabel.attachToComponent (&reverbDampingSlider, false);
+    reverbDampingLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (reverbDampingLabel);
+
+    reverbMixSlider.setSliderStyle (juce::Slider::Rotary);
+    reverbMixSlider.setRange (0.0, 1.0, 0.01);
+    reverbMixSlider.setValue (0.5);
+    reverbMixSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    reverbMixSlider.onValueChange = [this]
+    {
+        effectsProcessor.setReverbMix (static_cast<float> (reverbMixSlider.getValue()));
+    };
+    addAndMakeVisible (reverbMixSlider);
+
+    reverbMixLabel.setText ("Mix", juce::dontSendNotification);
+    reverbMixLabel.attachToComponent (&reverbMixSlider, false);
+    reverbMixLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (reverbMixLabel);
+
+    reverbBypassButton.setButtonText ("Bypass Reverb");
+    reverbBypassButton.setToggleState (true, juce::dontSendNotification);
+    reverbBypassButton.onClick = [this]
+    {
+        bool bypassed = reverbBypassButton.getToggleState();
+        effectsProcessor.setReverbBypassed (bypassed);
+    };
+    addAndMakeVisible (reverbBypassButton);
+
+    // Filter controls
+    filterCutoffSlider.setSliderStyle (juce::Slider::Rotary);
+    filterCutoffSlider.setRange (0.0, 1.0, 0.01);
+    filterCutoffSlider.setValue (0.5);
+    filterCutoffSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    filterCutoffSlider.onValueChange = [this]
+    {
+        effectsProcessor.setFilterCutoff (static_cast<float> (filterCutoffSlider.getValue()));
+    };
+    addAndMakeVisible (filterCutoffSlider);
+
+    filterCutoffLabel.setText ("Cutoff", juce::dontSendNotification);
+    filterCutoffLabel.attachToComponent (&filterCutoffSlider, false);
+    filterCutoffLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (filterCutoffLabel);
+
+    filterResonanceSlider.setSliderStyle (juce::Slider::Rotary);
+    filterResonanceSlider.setRange (0.0, 1.0, 0.01);
+    filterResonanceSlider.setValue (0.5);
+    filterResonanceSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 20);
+    filterResonanceSlider.onValueChange = [this]
+    {
+        effectsProcessor.setFilterResonance (static_cast<float> (filterResonanceSlider.getValue()));
+    };
+    addAndMakeVisible (filterResonanceSlider);
+
+    filterResonanceLabel.setText ("Resonance", juce::dontSendNotification);
+    filterResonanceLabel.attachToComponent (&filterResonanceSlider, false);
+    filterResonanceLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (filterResonanceLabel);
+
+    filterTypeBox.addItem ("Low-pass", 1);
+    filterTypeBox.addItem ("High-pass", 2);
+    filterTypeBox.addItem ("Band-pass", 3);
+    filterTypeBox.setSelectedId (1);
+    filterTypeBox.onChange = [this]
+    {
+        effectsProcessor.setFilterType (filterTypeBox.getSelectedId() - 1);
+    };
+    addAndMakeVisible (filterTypeBox);
+
+    filterTypeLabel.setText ("Type", juce::dontSendNotification);
+    filterTypeLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (filterTypeLabel);
+
+    filterBypassButton.setButtonText ("Bypass Filter");
+    filterBypassButton.setToggleState (true, juce::dontSendNotification);
+    filterBypassButton.onClick = [this]
+    {
+        bool bypassed = filterBypassButton.getToggleState();
+        effectsProcessor.setFilterBypassed (bypassed);
+    };
+    addAndMakeVisible (filterBypassButton);
+
+    // Start timer for time display updates
+    startTimer (100);  // Update 10 times per second
+
+    setSize (800, 1200);
+    setAudioChannels (0, 2);  // 0 inputs, 2 outputs
+}
+
+MainComponent::~MainComponent()
+{
+    shutdownAudio();
+}
+
+void MainComponent::prepareToPlay (int samplesPerBlockExpected, double sampleRate)
+{
+    transportSource.prepareToPlay (samplesPerBlockExpected, sampleRate);
+
+    // Prepare professional effects processor
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sampleRate;
+    spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlockExpected);
+    spec.numChannels = 2;
+
+    effectsProcessor.prepare (spec);
+
+    // Initialize all effect parameters (setValue doesn't trigger callbacks)
+    effectsProcessor.setPhaserRate (static_cast<float> (phaserRateSlider.getValue()));
+    effectsProcessor.setPhaserDepth (static_cast<float> (phaserDepthSlider.getValue()));
+    effectsProcessor.setPhaserMix (static_cast<float> (phaserMixSlider.getValue()));
+
+    effectsProcessor.setDelayTime (static_cast<float> (delayTimeSlider.getValue()));
+    effectsProcessor.setDelayFeedback (static_cast<float> (delayFeedbackSlider.getValue()));
+    effectsProcessor.setDelayMix (static_cast<float> (delayMixSlider.getValue()));
+
+    effectsProcessor.setChorusRate (static_cast<float> (chorusRateSlider.getValue()));
+    effectsProcessor.setChorusDepth (static_cast<float> (chorusDepthSlider.getValue()));
+    effectsProcessor.setChorusMix (static_cast<float> (chorusMixSlider.getValue()));
+
+    effectsProcessor.setDistortionDrive (static_cast<float> (distortionDriveSlider.getValue()));
+    effectsProcessor.setDistortionMix (static_cast<float> (distortionMixSlider.getValue()));
+
+    effectsProcessor.setReverbSize (static_cast<float> (reverbSizeSlider.getValue()));
+    effectsProcessor.setReverbDamping (static_cast<float> (reverbDampingSlider.getValue()));
+    effectsProcessor.setReverbMix (static_cast<float> (reverbMixSlider.getValue()));
+
+    effectsProcessor.setFilterCutoff (static_cast<float> (filterCutoffSlider.getValue()));
+    effectsProcessor.setFilterResonance (static_cast<float> (filterResonanceSlider.getValue()));
+    effectsProcessor.setFilterType (filterTypeBox.getSelectedId() - 1);
+
+    DBG ("Audio prepared: " << sampleRate << " Hz");
+}
+
+void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& bufferToFill)
+{
+    if (readerSource.get() == nullptr)
+    {
+        bufferToFill.clearActiveBufferRegion();
+        return;
+    }
+
+    // Get audio from transport source
+    transportSource.getNextAudioBlock (bufferToFill);
+
+    // Process through professional effects chain
+    effectsProcessor.process (*bufferToFill.buffer);
+
+    // Apply master gain
+    bufferToFill.buffer->applyGain (masterGain);
+}
+
+void MainComponent::releaseResources()
+{
+    transportSource.releaseResources();
+    effectsProcessor.reset();
+}
+
+void MainComponent::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colour (0xff2d2d2d));
+
+    g.setColour (juce::Colours::white);
+    g.setFont (28.0f);
+    g.drawText ("ModularRadio", getLocalBounds().removeFromTop (50),
+                juce::Justification::centred, true);
+
+    g.setFont (16.0f);
+    g.setColour (juce::Colours::lightblue);
+    g.drawText ("Phaser Effect", juce::Rectangle<int> (20, 200, 300, 30),
+                juce::Justification::centredLeft, true);
+    g.drawText ("Delay Effect", juce::Rectangle<int> (20, 350, 300, 30),
+                juce::Justification::centredLeft, true);
+    g.drawText ("Chorus Effect", juce::Rectangle<int> (20, 500, 300, 30),
+                juce::Justification::centredLeft, true);
+    g.drawText ("Distortion Effect", juce::Rectangle<int> (20, 650, 300, 30),
+                juce::Justification::centredLeft, true);
+    g.drawText ("Reverb Effect", juce::Rectangle<int> (20, 800, 300, 30),
+                juce::Justification::centredLeft, true);
+    g.drawText ("Filter Effect", juce::Rectangle<int> (20, 950, 300, 30),
+                juce::Justification::centredLeft, true);
+}
+
+void MainComponent::resized()
+{
+    auto area = getLocalBounds();
+    auto topArea = area.removeFromTop (100);
+
+    // Transport controls at top
+    auto transportArea = topArea.removeFromBottom (40);
+    transportArea.removeFromLeft (20);
+
+    playButton.setBounds (transportArea.removeFromLeft (80));
+    transportArea.removeFromLeft (5);
+    stopButton.setBounds (transportArea.removeFromLeft (80));
+    transportArea.removeFromLeft (5);
+    previousButton.setBounds (transportArea.removeFromLeft (80));
+    transportArea.removeFromLeft (5);
+    nextButton.setBounds (transportArea.removeFromLeft (80));
+
+    // Track info
+    auto infoArea = area.removeFromTop (80);
+    trackNameLabel.setBounds (infoArea.removeFromTop (30));
+    timeLabel.setBounds (infoArea.removeFromTop (25));
+
+    auto knobSize = 100;
+    int currentY = area.getY();
+
+    // Phaser controls
+    area.removeFromTop (10); // spacing
+    auto phaserArea = area.removeFromTop (145);
+    phaserArea.removeFromLeft (20);
+
+    phaserRateSlider.setBounds (phaserArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    phaserArea.removeFromLeft (20);
+    phaserDepthSlider.setBounds (phaserArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    phaserArea.removeFromLeft (20);
+    phaserMixSlider.setBounds (phaserArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+
+    phaserBypassButton.setBounds (400, currentY + 10, 150, 30);
+
+    // Delay controls
+    currentY = area.getY();
+    area.removeFromTop (10); // spacing
+    auto delayArea = area.removeFromTop (145);
+    delayArea.removeFromLeft (20);
+
+    delayTimeSlider.setBounds (delayArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    delayArea.removeFromLeft (20);
+    delayFeedbackSlider.setBounds (delayArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    delayArea.removeFromLeft (20);
+    delayMixSlider.setBounds (delayArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+
+    delayBypassButton.setBounds (400, currentY + 10, 150, 30);
+
+    // Chorus controls
+    currentY = area.getY();
+    area.removeFromTop (10); // spacing
+    auto chorusArea = area.removeFromTop (145);
+    chorusArea.removeFromLeft (20);
+
+    chorusRateSlider.setBounds (chorusArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    chorusArea.removeFromLeft (20);
+    chorusDepthSlider.setBounds (chorusArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    chorusArea.removeFromLeft (20);
+    chorusMixSlider.setBounds (chorusArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+
+    chorusBypassButton.setBounds (400, currentY + 10, 150, 30);
+
+    // Distortion controls
+    currentY = area.getY();
+    area.removeFromTop (10); // spacing
+    auto distortionArea = area.removeFromTop (145);
+    distortionArea.removeFromLeft (20);
+
+    distortionDriveSlider.setBounds (distortionArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    distortionArea.removeFromLeft (20);
+    distortionMixSlider.setBounds (distortionArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+
+    distortionBypassButton.setBounds (400, currentY + 10, 150, 30);
+
+    // Reverb controls
+    currentY = area.getY();
+    area.removeFromTop (10); // spacing
+    auto reverbArea = area.removeFromTop (145);
+    reverbArea.removeFromLeft (20);
+
+    reverbSizeSlider.setBounds (reverbArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    reverbArea.removeFromLeft (20);
+    reverbDampingSlider.setBounds (reverbArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    reverbArea.removeFromLeft (20);
+    reverbMixSlider.setBounds (reverbArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+
+    reverbBypassButton.setBounds (400, currentY + 10, 150, 30);
+
+    // Filter controls
+    currentY = area.getY();
+    area.removeFromTop (10); // spacing
+    auto filterArea = area.removeFromTop (145);
+    filterArea.removeFromLeft (20);
+
+    filterCutoffSlider.setBounds (filterArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    filterArea.removeFromLeft (20);
+    filterResonanceSlider.setBounds (filterArea.removeFromLeft (knobSize).removeFromTop (knobSize + 40));
+    filterArea.removeFromLeft (20);
+
+    // Filter type dropdown and label
+    auto filterTypeArea = filterArea.removeFromLeft (knobSize);
+    filterTypeLabel.setBounds (filterTypeArea.removeFromTop (20));
+    filterTypeBox.setBounds (filterTypeArea.removeFromTop (30));
+
+    filterBypassButton.setBounds (400, currentY + 10, 150, 30);
+
+    // Master gain
+    masterGainSlider.setBounds (getWidth() - 130, 200, 100, 140);
+}
+
+void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
+{
+    if (source == &transportSource)
+    {
+        if (transportSource.isPlaying())
+            state = Playing;
+        else if (state == Playing)
+        {
+            // Track finished, play next
+            nextButtonClicked();
+        }
+    }
+}
+
+void MainComponent::timerCallback()
+{
+    updateTimeDisplay();
+}
+
+void MainComponent::loadTrack (int index)
+{
+    if (index < 0 || index >= trackFiles.size())
+        return;
+
+    transportSource.stop();
+    transportSource.setSource (nullptr);
+    readerSource.reset();
+
+    auto file = trackFiles[index];
+    auto* reader = formatManager.createReaderFor (file);
+
+    if (reader != nullptr)
+    {
+        readerSource.reset (new juce::AudioFormatReaderSource (reader, true));
+        transportSource.setSource (readerSource.get(), 0, nullptr, reader->sampleRate);
+
+        currentTrackIndex = index;
+        currentTrackName = file.getFileNameWithoutExtension();
+        trackNameLabel.setText (currentTrackName, juce::dontSendNotification);
+
+        DBG ("Loaded: " << currentTrackName);
+    }
+}
+
+void MainComponent::loadTracksFromFolder (const juce::File& folder)
+{
+    trackFiles.clear();
+
+    juce::Array<juce::File> files;
+    folder.findChildFiles (files, juce::File::findFiles, true, "*.mp3;*.wav;*.aiff;*.aif;*.m4a;*.flac");
+
+    trackFiles.addArray (files);
+
+    DBG ("Loaded " << trackFiles.size() << " tracks");
+
+    if (!trackFiles.isEmpty())
+    {
+        loadTrack (0);
+    }
+}
+
+void MainComponent::playButtonClicked()
+{
+    if (state == Stopped || state == Paused)
+    {
+        transportSource.start();
+        state = Playing;
+        playButton.setButtonText ("Pause");
+    }
+    else if (state == Playing)
+    {
+        transportSource.stop();
+        state = Paused;
+        playButton.setButtonText ("Play");
+    }
+}
+
+void MainComponent::stopButtonClicked()
+{
+    transportSource.stop();
+    transportSource.setPosition (0);
+    state = Stopped;
+    playButton.setButtonText ("Play");
+}
+
+void MainComponent::nextButtonClicked()
+{
+    if (trackFiles.isEmpty())
+        return;
+
+    int nextIndex = (currentTrackIndex + 1) % trackFiles.size();
+    loadTrack (nextIndex);
+
+    if (state == Playing)
+        transportSource.start();
+}
+
+void MainComponent::previousButtonClicked()
+{
+    if (trackFiles.isEmpty())
+        return;
+
+    int prevIndex = currentTrackIndex - 1;
+    if (prevIndex < 0)
+        prevIndex = trackFiles.size() - 1;
+
+    loadTrack (prevIndex);
+
+    if (state == Playing)
+        transportSource.start();
+}
+
+void MainComponent::loadBundledMusic()
+{
+    // Get the app bundle's Resources folder
+    auto resourcesFolder = juce::File::getSpecialLocation (juce::File::currentApplicationFile)
+                               .getChildFile ("Contents")
+                               .getChildFile ("Resources")
+                               .getChildFile ("Modular Radio - All Tracks");
+
+    if (resourcesFolder.exists() && resourcesFolder.isDirectory())
+    {
+        loadTracksFromFolder (resourcesFolder);
+        DBG ("Loaded bundled music from: " << resourcesFolder.getFullPathName());
+    }
+    else
+    {
+        DBG ("Bundled music not found at: " << resourcesFolder.getFullPathName());
+        trackNameLabel.setText ("Music not found in bundle", juce::dontSendNotification);
+    }
+}
+
+void MainComponent::updateTimeDisplay()
+{
+    if (readerSource.get() != nullptr)
+    {
+        auto currentPos = transportSource.getCurrentPosition();
+        auto totalLength = transportSource.getLengthInSeconds();
+
+        auto formatTime = [] (double seconds) -> juce::String
+        {
+            int mins = static_cast<int> (seconds) / 60;
+            int secs = static_cast<int> (seconds) % 60;
+            return juce::String::formatted ("%d:%02d", mins, secs);
+        };
+
+        timeLabel.setText (formatTime (currentPos) + " / " + formatTime (totalLength),
+                          juce::dontSendNotification);
+    }
+}
