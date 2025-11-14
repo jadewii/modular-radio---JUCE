@@ -354,11 +354,41 @@ public:
 class EffectKnobGroup : public juce::Component
 {
 public:
+    // Constructor with two sliders
     EffectKnobGroup (const juce::String& name, const juce::String& param1, const juce::String& param2,
                      juce::Colour color, std::function<void(float)> onKnobChange,
                      std::function<void(float)> onParam1Change, std::function<void(float)> onParam2Change)
         : effectName (name), param1Name (param1), param2Name (param2), effectColor (color),
-          knobCallback (onKnobChange), param1Callback (onParam1Change), param2Callback (onParam2Change)
+          hasSecondSlider (true), knobCallback (onKnobChange), param1Callback (onParam1Change),
+          param2Callback (onParam2Change)
+    {
+        setupCommonComponents();
+
+        // Setup slider 2 only if we have two sliders
+        slider2.setSliderStyle (juce::Slider::LinearHorizontal);
+        slider2.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        slider2.setRange (0.0, 1.0, 0.01);
+        slider2.setValue (0.5);
+        slider2.setColour (juce::Slider::trackColourId, effectColor);
+        slider2.setLookAndFeel (&customLookAndFeel);
+        slider2.onValueChange = [this] { if (param2Callback) param2Callback (slider2.getValue()); };
+        addAndMakeVisible (slider2);
+    }
+
+    // Constructor with only one slider
+    EffectKnobGroup (const juce::String& name, const juce::String& param1,
+                     juce::Colour color, std::function<void(float)> onKnobChange,
+                     std::function<void(float)> onParam1Change)
+        : effectName (name), param1Name (param1), param2Name (""), effectColor (color),
+          hasSecondSlider (false), knobCallback (onKnobChange), param1Callback (onParam1Change),
+          param2Callback (nullptr)
+    {
+        setupCommonComponents();
+        // No second slider setup - it remains invisible
+    }
+
+private:
+    void setupCommonComponents()
     {
         // Setup knob
         knob.setSliderStyle (juce::Slider::Rotary);
@@ -379,16 +409,6 @@ public:
         slider1.onValueChange = [this] { if (param1Callback) param1Callback (slider1.getValue()); };
         addAndMakeVisible (slider1);
 
-        // Setup slider 2
-        slider2.setSliderStyle (juce::Slider::LinearHorizontal);
-        slider2.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-        slider2.setRange (0.0, 1.0, 0.01);
-        slider2.setValue (0.5);
-        slider2.setColour (juce::Slider::trackColourId, effectColor);
-        slider2.setLookAndFeel (&customLookAndFeel);
-        slider2.onValueChange = [this] { if (param2Callback) param2Callback (slider2.getValue()); };
-        addAndMakeVisible (slider2);
-
         // Setup bypass button (circular indicator)
         bypassButton.setButtonText ("");  // No text, just indicator
         bypassButton.setClickingTogglesState (true);
@@ -400,6 +420,8 @@ public:
         };
         addAndMakeVisible (bypassButton);
     }
+
+public:
 
     ~EffectKnobGroup()
     {
@@ -429,7 +451,17 @@ public:
         bypassButton.setBounds (0, 0, 36, 26);  // 20% larger (was 30x22)
         knob.setBounds (10, 40, 120, 120);  // Original larger size, positioned left
         slider1.setBounds (190, 75, 160, 25);  // Sliders positioned to the right of labels
-        slider2.setBounds (190, 120, 160, 25);
+
+        if (hasSecondSlider)
+        {
+            slider2.setBounds (190, 120, 160, 25);
+        }
+        else
+        {
+            // Center the single slider vertically when there's no second slider
+            slider1.setBounds (190, 97, 160, 25);  // Centered between 75 and 120
+            slider2.setBounds (0, 0, 0, 0);  // Hide the second slider
+        }
     }
 
     void setBypassCallback (std::function<void(bool)> callback)
@@ -447,6 +479,7 @@ private:
     juce::String param1Name;
     juce::String param2Name;
     juce::Colour effectColor;
+    bool hasSecondSlider;
 
     juce::Slider knob;
     juce::Slider slider1;

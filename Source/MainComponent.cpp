@@ -132,6 +132,7 @@ MainComponent::MainComponent()
         // Distortion
         distortionGroup->getKnob().setValue (random.nextDouble(), juce::sendNotification);
         distortionGroup->getSlider1().setValue (random.nextDouble(), juce::sendNotification);
+        distortionGroup->getSlider2().setValue (random.nextDouble(), juce::sendNotification);
         distortionGroup->getBypassButton().setToggleState (random.nextBool(), juce::sendNotification);
 
         // Reverb
@@ -200,12 +201,12 @@ MainComponent::MainComponent()
     });
     addAndMakeVisible (chorusGroup.get());
 
-    // Distortion: Knob=Drive, Sliders: Mix, (empty)
-    distortionGroup = std::make_unique<EffectKnobGroup> ("Distortion", "MIX", "",
+    // Distortion: Knob=Drive, Sliders: Mix, Drive
+    distortionGroup = std::make_unique<EffectKnobGroup> ("Distortion", "MIX", "DRIVE",
         juce::Colours::red,
         [this](float v) { effectsProcessor.setDistortionDrive(v); },
         [this](float v) { effectsProcessor.setDistortionMix(v); },
-        [this](float v) { });
+        [this](float v) { effectsProcessor.setDistortionDrive(v); });
     distortionGroup->setBypassCallback ([this](bool bypassed) {
         effectsProcessor.setDistortionBypassed(bypassed);
     });
@@ -288,6 +289,7 @@ MainComponent::MainComponent()
 
         distortionGroup->getKnob().setValue (0.0, juce::sendNotification);
         distortionGroup->getSlider1().setValue (0.0, juce::sendNotification);
+        distortionGroup->getSlider2().setValue (0.0, juce::sendNotification);
 
         reverbGroup->getKnob().setValue (0.0, juce::sendNotification);
         reverbGroup->getSlider1().setValue (0.0, juce::sendNotification);
