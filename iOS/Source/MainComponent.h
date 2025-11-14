@@ -1,0 +1,204 @@
+#pragma once
+
+#include <JuceHeader.h>
+#include "BinaryData.h"
+#include "EffectsProcessor.h"
+#include "ModularRadioLookAndFeel.h"
+
+//==============================================================================
+// ResamplingAudioSource wrapper that implements PositionableAudioSource
+// This provides smooth, click-free pitch shifting (changes pitch AND tempo like a turntable)
+class SmoothResamplingSource : public juce::PositionableAudioSource
+{
+public:
+    SmoothResamplingSource (juce::PositionableAudioSource* inputSource, bool deleteSourceWhenDeleted)
+        : source (inputSource),
+          deleteSource (deleteSourceWhenDeleted),
+          resampler (inputSource, false, 2)  // 2 channels
+    {
+        // Start at normal pitch (1.0 = no change)
+        resampler.setResamplingRatio (1.0);
+    }
+
+    ~SmoothResamplingSource() override
+    {
+        if (deleteSource)
+            delete source;
+    }
+
+    void setPitchSemitones (double semitones)
+    {
+        // Convert semitones to playback ratio: ratio = 2^(semitones/12)
+        double ratio = std::pow (2.0, semitones / 12.0);
+
+        // Clamp to reasonable range
+        ratio = juce::jlimit (0.5, 2.0, ratio);
+
+        // This is inherently smooth - ResamplingAudioSource handles all smoothing internally
+        resampler.setResamplingRatio (ratio);
+    }
+
+    // AudioSource methods
+    void prepareToPlay (int samplesPerBlockExpected, double sampleRate) override
+    {
+        resampler.prepareToPlay (samplesPerBlockExpected, sampleRate);
+    }
+
+    void releaseResources() override
+    {
+        resampler.releaseResources();
+    }
+
+    void getNextAudioBlock (const juce::AudioSourceChannelInfo& bufferToFill) override
+    {
+        resampler.getNextAudioBlock (bufferToFill);
+    }
+
+    // PositionableAudioSource methods - delegate to source
+    void setNextReadPosition (juce::int64 newPosition) override
+    {
+        if (source != nullptr)
+            source->setNextReadPosition (newPosition);
+    }
+
+    juce::int64 getNextReadPosition() const override
+    {
+        return source != nullptr ? source->getNextReadPosition() : 0;
+    }
+
+    juce::int64 getTotalLength() const override
+    {
+        return source != nullptr ? source->getTotalLength() : 0;
+    }
+
+    bool isLooping() const override
+    {
+        return source != nullptr ? source->isLooping() : false;
+    }
+
+private:
+    juce::PositionableAudioSource* source;
+    bool deleteSource;
+    juce::ResamplingAudioSource resampler;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SmoothResamplingSource)
+};
+
+//==============================================================================
+class MainComponent : public juce::AudioAppComponent,
+                      public juce::ChangeListener,
+                      public juce::Timer
+{
+public:
+    MainComponent();
+    ~MainComponent() override;
+
+    //==============================================================================
+    void prepareToPlay (int samplesPerBlockExpected, double sampleRate) override;
+    void getNextAudioBlock (const juce::AudioSourceChannelInfo& bufferToFill) override;
+    void releaseResources() override;
+
+    //==============================================================================
+    void paint (juce::Graphics& g) override;
+    void resized() override;
+
+    //==============================================================================
+    void changeListenerCallback (juce::ChangeBroadcaster* source) override;
+    void timerCallback() override;
+
+private:
+    //==============================================================================
+    // Audio playback
+    juce::AudioFormatManager formatManager;
+    std::unique_ptr<juce::AudioFormatReaderSource> readerSource;
+    std::unique_ptr<SmoothResamplingSource> pitchShifter;  // Real-time pitch shifting (turntable-style)
+    juce::AudioTransportSource transportSource;
+    double currentPitchSemitones = 0.0;  // Current pitch in semitones
+
+    // Track management - embedded binary data tracks
+    struct EmbeddedTrack {
+        const char* data;
+        size_t size;
+        juce::String name;
+    };
+    juce::Array<EmbeddedTrack> trackList;
+    int currentTrackIndex = 0;
+    juce::String currentTrackName;
+
+    // Audio parameters
+    float masterGain = 0.7f;
+
+    // Professional effects processor
+    EffectsProcessor effectsProcessor;
+
+    // Transport controls
+    juce::TextButton playButton;
+    juce::TextButton stopButton;
+    juce::TextButton nextButton;
+    juce::TextButton previousButton;
+
+    // Display
+    juce::Label brandLabel;
+    juce::Label trackNameLabel;
+    juce::Label timeLabel;
+
+    // Images
+    juce::Image backgroundImage;
+    juce::Image moduleImage;
+
+    // Center module controls
+    juce::Slider pitchKnob;
+    juce::ToggleButton fxToggleButton;
+    juce::Label ledIndicator;  // LED shows playback status
+    ModularRadioLookAndFeel customLookAndFeel;
+
+    // Effect controls - custom knob groups (1 knob + 2 sliders each)
+    std::unique_ptr<EffectKnobGroup> phaserGroup;
+    std::unique_ptr<EffectKnobGroup> delayGroup;
+    std::unique_ptr<EffectKnobGroup> chorusGroup;
+    std::unique_ptr<EffectKnobGroup> distortionGroup;
+    std::unique_ptr<EffectKnobGroup> reverbGroup;
+    std::unique_ptr<EffectKnobGroup> filterGroup;
+    std::unique_ptr<EffectKnobGroup> timeGroup;
+
+    // Master volume control
+    std::unique_ptr<VolumeKnob> volumeKnob;
+
+    // Filter type buttons
+    juce::ToggleButton filterHPButton;
+    juce::ToggleButton filterLPButton;
+    juce::ToggleButton filterBPButton;
+
+    // RESET button - turns all FX off and resets sliders to 0
+    juce::TextButton resetButton;
+
+    //==============================================================================
+    void loadTrack (int index);
+    void loadTracksFromFolder (const juce::File& folder);
+    void loadBundledMusic();
+    void playButtonClicked();
+    void stopButtonClicked();
+    void nextButtonClicked();
+    void previousButtonClicked();
+    void updateTimeDisplay();
+
+    enum TransportState
+    {
+        Stopped,
+        Playing,
+        Paused
+    };
+
+    TransportState state = Stopped;
+
+    // FX button flash
+    bool fxButtonFlashing = false;
+    int fxButtonFlashCounter = 0;
+
+    // Test tone generator
+    double currentSampleRate = 44100.0;
+    double currentAngle = 0.0;
+    double angleDelta = 0.0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
+};

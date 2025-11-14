@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="MdRi02" name="ModularRadio_Clean_iOS_v2" projectType="guiapp" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.0.0"
+              companyName="Modular Radio" pluginName="ModularRadio_Clean_iOS_v2" pluginDesc="Professional DJ and Effects Platform"
+              pluginManufacturer="Modular Radio" pluginManufacturerWebsite="https://modularradio.com"
+              pluginManufacturerEmail="contact@modularradio.com" pluginManufacturerCode="MdRd"
+              pluginCode="MdRd" pluginChannelConfigs="{1, 1}, {2, 2}" pluginIsSynth="0"
+              pluginWantsMidiIn="0" pluginProducesMidiOut="0" pluginIsMidiEffectPlugin="0"
+              pluginEditorRequiresKeyboardFocus="1" pluginAUExportPrefix="ModularRadioAU"
+              pluginRTASCategory="2" aaxIdentifier="com.jadewii.ModularRadio"
+              pluginAAXCategory="2" companyWebsite="https://modularradio.com"
+              companyEmail="contact@modularradio.com" bundleIdentifier="com.jadewii.modularradio.v2">
+  <MAINGROUP id="IdsOCK" name="ModularRadio_Clean_iOS_v2">
+    <GROUP id="{F6E7D8C9-A1B2-C3D4-E5F6-789012345678}" name="Source">
+      <FILE id="M0" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
+      <FILE id="X9Y8Z7" name="MainComponent.cpp" compile="1" resource="0"
+            file="Source/MainComponent.cpp"/>
+      <FILE id="W6V5U4" name="MainComponent.h" compile="0" resource="0" file="Source/MainComponent.h"/>
+      <FILE id="E1F2F3" name="EffectsProcessor.h" compile="0" resource="0"
+            file="Source/EffectsProcessor.h"/>
+      <FILE id="M1" name="ModularRadioLookAndFeel.h" compile="0" resource="0"
+            file="Source/ModularRadioLookAndFeel.h"/>
+      <FILE id="PH1" name="PhaserEffect.h" compile="0" resource="0"
+            file="Source/PhaserEffect.h"/>
+      <FILE id="ST1" name="SoundTouchImpl.cpp" compile="1" resource="0"
+            file="Source/SoundTouchImpl.cpp"/>
+      <GROUP id="{ST-GROUP}" name="SoundTouch">
+        <FILE id="ST2" name="AAFilter.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/AAFilter.cpp"/>
+        <FILE id="ST3" name="AAFilter.h" compile="0" resource="0"
+              file="Source/SoundTouch/AAFilter.h"/>
+        <FILE id="ST4" name="BPMDetect.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/BPMDetect.cpp"/>
+        <FILE id="ST5" name="BPMDetect.h" compile="0" resource="0"
+              file="Source/SoundTouch/BPMDetect.h"/>
+        <FILE id="ST6" name="cpu_detect_x86.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/cpu_detect_x86.cpp"/>
+        <FILE id="ST7" name="cpu_detect.h" compile="0" resource="0"
+              file="Source/SoundTouch/cpu_detect.h"/>
+        <FILE id="ST8" name="FIFOSampleBuffer.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/FIFOSampleBuffer.cpp"/>
+        <FILE id="ST9" name="FIFOSampleBuffer.h" compile="0" resource="0"
+              file="Source/SoundTouch/FIFOSampleBuffer.h"/>
+        <FILE id="ST10" name="FIFOSamplePipe.h" compile="0" resource="0"
+               file="Source/SoundTouch/FIFOSamplePipe.h"/>
+        <FILE id="ST11" name="FIRFilter.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/FIRFilter.cpp"/>
+        <FILE id="ST12" name="FIRFilter.h" compile="0" resource="0"
+              file="Source/SoundTouch/FIRFilter.h"/>
+        <FILE id="ST13" name="InterpolateCubic.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/InterpolateCubic.cpp"/>
+        <FILE id="ST14" name="InterpolateCubic.h" compile="0" resource="0"
+              file="Source/SoundTouch/InterpolateCubic.h"/>
+        <FILE id="ST15" name="InterpolateLinear.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/InterpolateLinear.cpp"/>
+        <FILE id="ST16" name="InterpolateLinear.h" compile="0" resource="0"
+              file="Source/SoundTouch/InterpolateLinear.h"/>
+        <FILE id="ST17" name="InterpolateShannon.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/InterpolateShannon.cpp"/>
+        <FILE id="ST18" name="InterpolateShannon.h" compile="0" resource="0"
+              file="Source/SoundTouch/InterpolateShannon.h"/>
+        <FILE id="ST19" name="mmx_optimized.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/mmx_optimized.cpp"/>
+        <FILE id="ST20" name="PeakFinder.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/PeakFinder.cpp"/>
+        <FILE id="ST21" name="PeakFinder.h" compile="0" resource="0"
+              file="Source/SoundTouch/PeakFinder.h"/>
+        <FILE id="ST22" name="RateTransposer.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/RateTransposer.cpp"/>
+        <FILE id="ST23" name="RateTransposer.h" compile="0" resource="0"
+              file="Source/SoundTouch/RateTransposer.h"/>
+        <FILE id="ST24" name="soundtouch_config.h" compile="0" resource="0"
+              file="Source/SoundTouch/soundtouch_config.h"/>
+        <FILE id="ST25" name="SoundTouch.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/SoundTouch.cpp"/>
+        <FILE id="ST26" name="SoundTouch.h" compile="0" resource="0"
+              file="Source/SoundTouch/SoundTouch.h"/>
+        <FILE id="ST27" name="sse_optimized.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/sse_optimized.cpp"/>
+        <FILE id="ST28" name="STTypes.h" compile="0" resource="0"
+              file="Source/SoundTouch/STTypes.h"/>
+        <FILE id="ST29" name="TDStretch.cpp" compile="1" resource="0"
+              file="Source/SoundTouch/TDStretch.cpp"/>
+        <FILE id="ST30" name="TDStretch.h" compile="0" resource="0"
+              file="Source/SoundTouch/TDStretch.h"/>
+      </GROUP>
+      <FILE id="BD1" name="BinaryData.h" compile="0" resource="0"
+            file="Source/BinaryData.h"/>
+      <FILE id="BD2" name="BinaryData.cpp" compile="1" resource="0"
+            file="Source/BinaryData.cpp"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_dsp" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1"/>
+  <LIVE_SETTINGS>
+    <OSX/>
+  </LIVE_SETTINGS>
+  <EXPORTFORMATS>
+    <XCODE_IPHONE targetFolder="Builds/iOS"
+                  iosDeploymentTarget="13.0" iPad="1" iPhone="1"
+                  iosScreenOrientation="UIInterfaceOrientationLandscapeLeft,UIInterfaceOrientationLandscapeRight"
+                  iosBundleId="com.jadewii.modularradio.v2"
+                  customPListEntry="&lt;key&gt;UIRequiredDeviceCapabilities&lt;/key&gt;&#10;&lt;array&gt;&#10;&lt;string&gt;arm64&lt;/string&gt;&#10;&lt;/array&gt;&#10;&lt;key&gt;UIRequiresFullScreen&lt;/key&gt;&#10;&lt;true/&gt;&#10;&lt;key&gt;UISupportedInterfaceOrientations~ipad&lt;/key&gt;&#10;&lt;array&gt;&#10;&lt;string&gt;UIInterfaceOrientationLandscapeLeft&lt;/string&gt;&#10;&lt;string&gt;UIInterfaceOrientationLandscapeRight&lt;/string&gt;&#10;&lt;/array&gt;">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="ModularRadio_Clean_iOS_v2" iosCodeSigning="1"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="ModularRadio_Clean_iOS_v2" iosCodeSigning="1"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_dsp" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="~/JUCE/modules"/>
+      </MODULEPATHS>
+    </XCODE_IPHONE>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
