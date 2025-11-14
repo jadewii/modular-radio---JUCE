@@ -197,11 +197,10 @@ public:
             g.setColour (juce::Colours::black);
             g.fillEllipse (centerX - diameter/2, centerY - diameter/2, diameter, diameter);
 
-            // Inner circle - WHITE normally, PINK when flashing
+            // Inner circle - WHITE normally, PINK when pressed
             auto innerDiameter = diameter - 6;
-            // Get flash state from button's property (if set)
-            bool isFlashing = button.getProperties().getWithDefault ("flashing", false);
-            g.setColour (isFlashing ? juce::Colour (0xffFF1493) : juce::Colours::white);  // White normally, hot pink on flash
+            // Use button press state instead of flashing property
+            g.setColour (shouldDrawButtonAsDown ? juce::Colour (0xffFF1493) : juce::Colours::white);  // White normally, hot pink when pressed
             g.fillEllipse (centerX - innerDiameter/2, centerY - innerDiameter/2, innerDiameter, innerDiameter);
         }
         else  // Small circular bypass indicators
@@ -511,4 +510,127 @@ private:
     std::function<void(float)> valueCallback;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VolumeKnob)
+};
+
+/**
+ * Draggable Filter Buttons Group
+ * Contains the 3 filter type buttons (HP, LP, BP) that can be dragged as a group
+ */
+class DraggableFilterButtons : public juce::Component
+{
+public:
+    DraggableFilterButtons (juce::ToggleButton& hp, juce::ToggleButton& lp, juce::ToggleButton& bp)
+        : hpButton(hp), lpButton(lp), bpButton(bp)
+    {
+        addAndMakeVisible (hpButton);
+        addAndMakeVisible (lpButton);
+        addAndMakeVisible (bpButton);
+
+        // Load saved position
+        loadPosition();
+
+        setSize (120, 40);  // Size to contain all 3 buttons
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        // Draw a subtle border when dragging to show the group
+        if (isDragging)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.3f));
+            g.drawRect (getLocalBounds(), 2);
+
+            // Draw a small label
+            g.setColour (juce::Colours::white.withAlpha (0.7f));
+            g.setFont (juce::Font (juce::FontOptions().withHeight(10.0f)));
+            g.drawText ("FILTER TYPE", 0, -15, getWidth(), 15, juce::Justification::centred);
+        }
+    }
+
+    void resized() override
+    {
+        // Position the 3 buttons horizontally
+        hpButton.setBounds (0, 0, 35, 35);
+        lpButton.setBounds (40, 0, 35, 35);
+        bpButton.setBounds (80, 0, 35, 35);
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        isDragging = true;
+        dragStartPos = getPosition();
+        mouseDownPos = e.getPosition();
+        repaint();
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (isDragging)
+        {
+            auto newPos = dragStartPos + (e.getPosition() - mouseDownPos);
+
+            // Constrain to parent bounds
+            if (auto* parent = getParentComponent())
+            {
+                auto parentBounds = parent->getLocalBounds();
+                newPos.x = juce::jlimit (0, parentBounds.getWidth() - getWidth(), newPos.x);
+                newPos.y = juce::jlimit (0, parentBounds.getHeight() - getHeight(), newPos.y);
+            }
+
+            setTopLeftPosition (newPos);
+        }
+    }
+
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (isDragging)
+        {
+            isDragging = false;
+            savePosition();
+            repaint();
+
+            // Print position for debugging
+            DBG ("Filter buttons positioned at: " << getX() << ", " << getY());
+        }
+    }
+
+private:
+    juce::ToggleButton& hpButton;
+    juce::ToggleButton& lpButton;
+    juce::ToggleButton& bpButton;
+
+    bool isDragging = false;
+    juce::Point<int> dragStartPos;
+    juce::Point<int> mouseDownPos;
+
+    void savePosition()
+    {
+        // Save position to user preferences
+        juce::PropertiesFile::Options options;
+        options.applicationName = "ModularRadio";
+        options.filenameSuffix = ".settings";
+        options.osxLibrarySubFolder = "Application Support";
+
+        auto props = std::make_unique<juce::PropertiesFile> (options);
+        props->setValue ("filterButtonsX", getX());
+        props->setValue ("filterButtonsY", getY());
+        props->save();
+    }
+
+    void loadPosition()
+    {
+        // Load position from user preferences
+        juce::PropertiesFile::Options options;
+        options.applicationName = "ModularRadio";
+        options.filenameSuffix = ".settings";
+        options.osxLibrarySubFolder = "Application Support";
+
+        auto props = std::make_unique<juce::PropertiesFile> (options);
+        int x = props->getIntValue ("filterButtonsX", 175);  // Default position
+        int y = props->getIntValue ("filterButtonsY", 45);
+
+        setTopLeftPosition (x, y);
+    }
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DraggableFilterButtons)
 };

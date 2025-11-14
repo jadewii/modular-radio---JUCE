@@ -169,6 +169,9 @@ private:
     juce::ToggleButton filterLPButton;
     juce::ToggleButton filterBPButton;
 
+    // Draggable filter buttons group
+    std::unique_ptr<DraggableFilterButtons> draggableFilterButtons;
+
     // RESET button - turns all FX off and resets sliders to 0
     juce::TextButton resetButton;
 

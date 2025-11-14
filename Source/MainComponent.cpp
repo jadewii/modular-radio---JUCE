@@ -109,11 +109,7 @@ MainComponent::MainComponent()
         // Randomize all effect parameters AND on/off states!
         juce::Random random;
 
-        // Start flash animation
-        fxButtonFlashing = true;
-        fxButtonFlashCounter = 6;  // Flash 3 times (6 toggles)
-        fxToggleButton.getProperties().set ("flashing", true);
-        fxToggleButton.repaint();
+        // NO FLASHING - just do the randomization
 
         // Phaser
         phaserGroup->getKnob().setValue (random.nextDouble(), juce::sendNotification);
@@ -237,13 +233,12 @@ MainComponent::MainComponent()
     });
     // GAIN slider now visible and positioned below RESO slider (not covered by filter type buttons)
 
-    // Filter type buttons (HP, LP, BP) - radio button group - INSIDE the filter group wrapper
+    // Filter type buttons (HP, LP, BP) - radio button group
     filterHPButton.setButtonText ("HP");
     filterHPButton.setClickingTogglesState (true);
     filterHPButton.setRadioGroupId (1001);
     filterHPButton.setLookAndFeel (&customLookAndFeel);
     filterHPButton.onClick = [this] { effectsProcessor.setFilterType(1); };  // High-pass (FIXED: was 2)
-    filterGroup->addAndMakeVisible (filterHPButton);  // Add to filter group
 
     filterLPButton.setButtonText ("LP");
     filterLPButton.setClickingTogglesState (true);
@@ -251,14 +246,16 @@ MainComponent::MainComponent()
     filterLPButton.setLookAndFeel (&customLookAndFeel);
     filterLPButton.setToggleState (true, juce::dontSendNotification);  // Default to LP
     filterLPButton.onClick = [this] { effectsProcessor.setFilterType(0); };  // Low-pass
-    filterGroup->addAndMakeVisible (filterLPButton);  // Add to filter group
 
     filterBPButton.setButtonText ("BP");
     filterBPButton.setClickingTogglesState (true);
     filterBPButton.setRadioGroupId (1001);
     filterBPButton.setLookAndFeel (&customLookAndFeel);
     filterBPButton.onClick = [this] { effectsProcessor.setFilterType(2); };  // Band-pass (FIXED: was 1)
-    filterGroup->addAndMakeVisible (filterBPButton);  // Add to filter group
+
+    // Create draggable filter buttons group
+    draggableFilterButtons = std::make_unique<DraggableFilterButtons> (filterHPButton, filterLPButton, filterBPButton);
+    filterGroup->addAndMakeVisible (draggableFilterButtons.get());  // Add to filter group
 
     // Add filter group - FIXED POSITION
     addAndMakeVisible (filterGroup.get());
@@ -334,14 +331,46 @@ MainComponent::MainComponent()
     // Load bundled music
     loadBundledMusic();
 
-    // Start timer - modified for safer operation
-    startTimer (500);  // Slower timer (500ms instead of 100ms)
+    // Start timer - faster for better flashing effect
+    startTimer (150);  // Faster timer (150ms for visible flashing)
 
-    // Set window size to fit 16-inch MacBook screen comfortably
+    // Start with reference size for perfect scaling demonstration
     setSize (1400, 900);
     setAudioChannels (0, 2);
 
+    // Make window resizable so you can simulate different iPad sizes!
+    if (auto* window = findParentComponentOfClass<juce::DocumentWindow>())
+    {
+        window->setResizable (true, true);
+        window->setResizeLimits (700, 450, 2800, 1800);  // Min 50%, Max 200% of reference
+    }
+
     DBG ("MainComponent initialization complete - all components in FIXED positions!");
+
+    // DEMONSTRATE: Show how your layout would scale on different iPad sizes
+    DBG ("=== PROPORTIONAL SCALING DEMONSTRATION ===");
+
+    // iPad Pro 12.9" (2732×2048 landscape = 2732×2048)
+    float scale_ipad_pro_129 = juce::jmin(2732.0f / 1400.0f, 2048.0f / 900.0f);
+    DBG ("iPad Pro 12.9\": " << 2732 << "x" << 2048 << " | Scale: " << scale_ipad_pro_129 << " (" << (scale_ipad_pro_129 * 100 - 100) << "% larger)");
+
+    // iPad Pro 11" (2388×1668)
+    float scale_ipad_pro_11 = juce::jmin(2388.0f / 1400.0f, 1668.0f / 900.0f);
+    DBG ("iPad Pro 11\": " << 2388 << "x" << 1668 << " | Scale: " << scale_ipad_pro_11 << " (" << (scale_ipad_pro_11 * 100 - 100) << "% larger)");
+
+    // iPad Air 11" (2360×1640)
+    float scale_ipad_air_11 = juce::jmin(2360.0f / 1400.0f, 1640.0f / 900.0f);
+    DBG ("iPad Air 11\": " << 2360 << "x" << 1640 << " | Scale: " << scale_ipad_air_11 << " (" << (scale_ipad_air_11 * 100 - 100) << "% larger)");
+
+    // iPad Mini (2266×1488)
+    float scale_ipad_mini = juce::jmin(2266.0f / 1400.0f, 1488.0f / 900.0f);
+    DBG ("iPad Mini: " << 2266 << "x" << 1488 << " | Scale: " << scale_ipad_mini << " (" << (scale_ipad_mini * 100 - 100) << "% larger)");
+
+    // Standard iPad (2360×1640)
+    float scale_ipad = juce::jmin(2360.0f / 1400.0f, 1640.0f / 900.0f);
+    DBG ("iPad (10th gen): " << 2360 << "x" << 1640 << " | Scale: " << scale_ipad << " (" << (scale_ipad * 100 - 100) << "% larger)");
+
+    DBG ("Your perfect layout will scale proportionally to fit each device while maintaining exact proportions!");
 }
 
 MainComponent::~MainComponent()
@@ -355,6 +384,7 @@ MainComponent::~MainComponent()
     filterLPButton.setLookAndFeel (nullptr);
     filterBPButton.setLookAndFeel (nullptr);
     resetButton.setLookAndFeel (nullptr);
+    draggableFilterButtons.reset();
     shutdownAudio();
 }
 
@@ -494,57 +524,91 @@ void MainComponent::paint (juce::Graphics& g)
 void MainComponent::resized()
 {
     auto bounds = getLocalBounds();
-    auto centerX = bounds.getWidth() / 2;
-    auto centerY = bounds.getHeight() / 2;
 
-    // Center module bounds (480x640)
-    auto moduleX = centerX - 240;
-    auto moduleY = centerY - 320;
+    // PROPORTIONAL SCALING SYSTEM - maintains exact layout on any screen size
+    // Reference dimensions: 1400x900 (your perfect layout)
+    const float refWidth = 1400.0f;
+    const float refHeight = 900.0f;
 
-    // Pitch knob - centered in module (30% BIGGER!)
-    pitchKnob.setBounds (moduleX + 123, moduleY + 153, 234, 234);  // Was 180x180, now 234x234 (30% larger)
+    // Calculate scale factors
+    float scaleX = bounds.getWidth() / refWidth;
+    float scaleY = bounds.getHeight() / refHeight;
 
-    // FX button - FIXED POSITION directly on module
-    fxToggleButton.setBounds (moduleX + 80, moduleY + 415, 40, 40);
+    // Use the smaller scale to maintain aspect ratio (prevents stretching)
+    float scale = juce::jmin(scaleX, scaleY);
 
-    // LED indicator - FIXED POSITION directly on module
-    ledIndicator.setBounds (moduleX + 425, moduleY + 155, 22, 22);
+    // Calculate scaled dimensions
+    float scaledWidth = refWidth * scale;
+    float scaledHeight = refHeight * scale;
 
-    // Transport controls - FIXED POSITIONS directly
-    auto transportY = moduleY + 484;
-    auto playButtonHeight = 60;
-    auto prevNextY = transportY + (playButtonHeight - 50) / 2;  // Center 50px buttons with 60px play button
+    // Center the scaled content if screen is larger than scaled content
+    float offsetX = (bounds.getWidth() - scaledWidth) / 2;
+    float offsetY = (bounds.getHeight() - scaledHeight) / 2;
 
-    previousButton.setBounds (centerX - 110, prevNextY, 50, 50);  // Left of center
-    playButton.setBounds (centerX - 30, transportY, 60, 60);     // Center (bigger)
-    nextButton.setBounds (centerX + 60, prevNextY, 50, 50);       // Right of center
-    stopButton.setBounds (0, 0, 0, 0); // Hide stop button
+    // Helper function to scale coordinates
+    auto scaleBounds = [scale, offsetX, offsetY](float x, float y, float w, float h) -> juce::Rectangle<int>
+    {
+        return juce::Rectangle<int>(
+            static_cast<int>(x * scale + offsetX),
+            static_cast<int>(y * scale + offsetY),
+            static_cast<int>(w * scale),
+            static_cast<int>(h * scale)
+        );
+    };
 
-    // RESET button - FIXED POSITION to the right of transport controls
-    resetButton.setBounds (centerX + 120, transportY + 10, 80, 40);
+    // SCALED CENTER CALCULATIONS (based on reference 1400x900)
+    auto refCenterX = refWidth / 2;   // 700
+    auto refCenterY = refHeight / 2;  // 450
 
-    // Track info - FIXED POSITION below transport controls
-    auto labelAreaY = moduleY + 590;
-    trackNameLabel.setBounds (moduleX + 60, labelAreaY, 360, 30);
+    // Center module bounds (480x640 in reference)
+    auto refModuleX = refCenterX - 240;  // 460
+    auto refModuleY = refCenterY - 320;  // 130
 
-    // Effect knob groups - FIXED POSITIONS around edges (1400x900 window)
-    // Left side
-    filterGroup->setBounds (10, 60, 360, 200);
-    delayGroup->setBounds (10, 280, 360, 200);
-    reverbGroup->setBounds (10, 500, 360, 200);
-    timeGroup->setBounds (10, 720, 360, 200);
+    // Pitch knob - centered in module (maintains exact relative position)
+    pitchKnob.setBounds (scaleBounds(refModuleX + 123, refModuleY + 153, 234, 234));
 
-    // Right side
-    chorusGroup->setBounds (1030, 60, 360, 200);
-    distortionGroup->setBounds (1030, 280, 360, 200);
-    phaserGroup->setBounds (1030, 500, 360, 200);
-    volumeKnob->setBounds (1030, 720, 360, 200);
+    // FX button - exact relative position on module
+    fxToggleButton.setBounds (scaleBounds(refModuleX + 80, refModuleY + 415, 40, 40));
 
-    // Filter type buttons (positioned relative to filter GROUP)
-    // Positioned to not overlap with sliders
-    filterHPButton.setBounds (185, 220, 40, 40);  // HP button
-    filterLPButton.setBounds (230, 220, 40, 40);  // LP button
-    filterBPButton.setBounds (275, 220, 40, 40);  // BP button
+    // LED indicator - exact relative position on module
+    ledIndicator.setBounds (scaleBounds(refModuleX + 425, refModuleY + 155, 22, 22));
+
+    // Transport controls - maintain exact relative positions
+    auto refTransportY = refModuleY + 484;
+    auto refPlayButtonHeight = 60;
+    auto refPrevNextY = refTransportY + (refPlayButtonHeight - 50) / 2;
+
+    previousButton.setBounds (scaleBounds(refCenterX - 110, refPrevNextY, 50, 50));
+    playButton.setBounds (scaleBounds(refCenterX - 30, refTransportY, 60, 60));
+    nextButton.setBounds (scaleBounds(refCenterX + 60, refPrevNextY, 50, 50));
+    stopButton.setBounds (0, 0, 0, 0); // Keep hidden
+
+    // RESET button - exact relative position
+    resetButton.setBounds (scaleBounds(refCenterX + 120, refTransportY + 10, 80, 40));
+
+    // Track info - exact relative position
+    auto refLabelAreaY = refModuleY + 590;
+    trackNameLabel.setBounds (scaleBounds(refModuleX + 60, refLabelAreaY, 360, 30));
+
+    // Effect knob groups - PROPORTIONALLY SCALED positions (maintains your perfect layout)
+    // Left side - exact same relative positions
+    filterGroup->setBounds (scaleBounds(10, 60, 360, 200));
+    delayGroup->setBounds (scaleBounds(10, 280, 360, 200));
+    reverbGroup->setBounds (scaleBounds(10, 500, 360, 200));
+    timeGroup->setBounds (scaleBounds(10, 720, 360, 200));
+
+    // Right side - exact same relative positions
+    chorusGroup->setBounds (scaleBounds(1030, 60, 360, 200));
+    distortionGroup->setBounds (scaleBounds(1030, 280, 360, 200));
+    phaserGroup->setBounds (scaleBounds(1030, 500, 360, 200));
+    volumeKnob->setBounds (scaleBounds(1030, 720, 360, 200));
+
+    // Filter type buttons - now handled by draggable group
+    // (No manual positioning needed - draggable group manages its own position)
+
+    // Debug scaling info
+    DBG("Screen: " << bounds.getWidth() << "x" << bounds.getHeight()
+        << " | Scale: " << scale << " | Scaled: " << scaledWidth << "x" << scaledHeight);
 }
 
 void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
@@ -574,21 +638,7 @@ void MainComponent::timerCallback()
     }
     // REMOVED: ledIndicator.repaint(); - manual repaint can cause hangs
 
-    // Handle FX button flash animation - SAFER VERSION (no repaint calls)
-    if (fxButtonFlashing && fxButtonFlashCounter > 0)
-    {
-        fxButtonFlashCounter--;
-        bool flashState = (fxButtonFlashCounter % 2) == 0;  // Toggle between true/false
-        fxToggleButton.getProperties().set ("flashing", flashState);
-        // REMOVED: fxToggleButton.repaint(); - manual repaint can cause hangs
-
-        if (fxButtonFlashCounter == 0)
-        {
-            fxButtonFlashing = false;
-            fxToggleButton.getProperties().set ("flashing", false);
-            // REMOVED: fxToggleButton.repaint(); - manual repaint can cause hangs
-        }
-    }
+    // FX button flashing removed - now uses press state only
 }
 
 void MainComponent::loadTrack (int index)

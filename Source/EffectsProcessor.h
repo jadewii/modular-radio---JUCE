@@ -239,8 +239,22 @@ public:
     // Filter controls
     void setFilterCutoff (float cutoff)
     {
-        // Map 0-1 to 100Hz-20kHz logarithmically
-        filterCutoff = 100.0f * std::pow (200.0f, cutoff);
+        // Store normalized value for when filter type changes
+        filterCutoffNormalized = juce::jlimit (0.0f, 1.0f, cutoff);
+
+        // Different mapping based on filter type for intuitive control
+        switch (filterType)
+        {
+            case 0:  // Low-pass: 0=muffled(100Hz), 1=open(20kHz)
+                filterCutoff = 100.0f * std::pow (200.0f, filterCutoffNormalized);
+                break;
+            case 1:  // High-pass: 0=open(20Hz), 1=thin(10kHz) - REVERSED for natural feel
+                filterCutoff = 20.0f * std::pow (500.0f, 1.0f - filterCutoffNormalized);  // Inverted mapping
+                break;
+            case 2:  // Band-pass: 0=low band, 1=high band
+                filterCutoff = 100.0f * std::pow (200.0f, filterCutoffNormalized);
+                break;
+        }
         updateFilter();
     }
 
@@ -256,6 +270,8 @@ public:
         if (type != filterType)
         {
             filterType = type;
+            // Recalculate cutoff frequency with new type-specific mapping
+            setFilterCutoff (filterCutoffNormalized);  // Use stored normalized value
             updateFilter();
             filter.reset();  // Clear filter state to prevent pops when changing type
         }
@@ -349,6 +365,7 @@ private:
     float distortionMix = 0.5f;
 
     float filterCutoff = 1000.0f;
+    float filterCutoffNormalized = 0.5f;  // Stored normalized value (0-1) for type switching
     float filterResonance = 1.0f;
     float filterGain = 1.0f;     // Output gain (0.1 to 2.0)
     int filterType = 0;  // 0=LP, 1=HP, 2=BP

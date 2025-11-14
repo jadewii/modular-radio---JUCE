@@ -2,14 +2,23 @@
 
 <JUCERPROJECT id="ModRad" name="ModularRadio" projectType="guiapp" useAppConfig="0"
               addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.0.0"
-              companyName="Modular Radio">
+              companyName="Modular Radio" pluginName="ModularRadio" pluginDesc="Professional DJ and Effects Platform"
+              pluginManufacturer="Modular Radio" pluginManufacturerWebsite="https://modularradio.com"
+              pluginManufacturerEmail="contact@modularradio.com" pluginManufacturerCode="MdRd"
+              pluginCode="MdRd" pluginChannelConfigs="{1, 1}, {2, 2}" pluginIsSynth="0"
+              pluginWantsMidiIn="0" pluginProducesMidiOut="0" pluginIsMidiEffectPlugin="0"
+              pluginEditorRequiresKeyboardFocus="1" pluginAUExportPrefix="ModularRadioAU"
+              pluginRTASCategory="2" aaxIdentifier="com.jadewii.ModularRadio"
+              pluginAAXCategory="2" companyWebsite="https://modularradio.com"
+              companyEmail="contact@modularradio.com" bundleIdentifier="com.modularradio.app">
   <MAINGROUP id="IdsOCK" name="ModularRadio">
     <GROUP id="{F6E7D8C9-A1B2-C3D4-E5F6-789012345678}" name="Source">
       <FILE id="M0" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
       <FILE id="X9Y8Z7" name="MainComponent.cpp" compile="1" resource="0"
             file="Source/MainComponent.cpp"/>
       <FILE id="W6V5U4" name="MainComponent.h" compile="0" resource="0" file="Source/MainComponent.h"/>
-      <FILE id="M1" name="ModularRadioLookAndFeel.h" compile="0" resource="0" file="Source/ModularRadioLookAndFeel.h"/>
+      <FILE id="M1" name="ModularRadioLookAndFeel.h" compile="0" resource="0"
+            file="Source/ModularRadioLookAndFeel.h"/>
       <FILE id="E1F2F3" name="EffectsProcessor.h" compile="0" resource="0"
             file="Source/EffectsProcessor.h"/>
     </GROUP>
@@ -29,18 +38,26 @@
     <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
   </MODULES>
   <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1"/>
+  <LIVE_SETTINGS>
+    <OSX/>
+  </LIVE_SETTINGS>
   <EXPORTFORMATS>
     <XCODE_MAC targetFolder="Builds/MacOSX" customXcodeResourceFolders="/Users/jade/JUCEProjects/ModularRadio/Resources"
-               smallIcon="ModularRadio.icns" bigIcon="ModularRadio.icns">
+               smallIcon="ModularRadio.icns" bigIcon="ModularRadio.icns" enableMacCatalyst="1"
+               enableAppSandbox="1" appSandboxInheritance="1" appSandboxOptions="com.apple.security.app-sandbox,com.apple.security.files.user-selected.read-write,com.apple.security.device.audio-input"
+               hardenedRuntime="1" microphonePermissionNeeded="1" macOSDeploymentTarget="10.13">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" targetName="ModularRadio"/>
         <CONFIGURATION isDebug="0" name="Release" targetName="ModularRadio"/>
+        <CONFIGURATION isDebug="0" name="App Store" targetName="ModularRadio" enablePluginBinaryCopyStep="1"
+                      macOSArchitecture="arm64,x86_64" macCodeSigning="1" macDevelopmentTeam="BV35B44US2"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path="~/JUCE/modules"/>
         <MODULEPATH id="juce_audio_devices" path="~/JUCE/modules"/>
         <MODULEPATH id="juce_audio_formats" path="~/JUCE/modules"/>
-        <MODULEPATH id="juce_audio_processors" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="../../JUCE/modules"/>
         <MODULEPATH id="juce_audio_utils" path="~/JUCE/modules"/>
         <MODULEPATH id="juce_core" path="~/JUCE/modules"/>
         <MODULEPATH id="juce_data_structures" path="~/JUCE/modules"/>
@@ -51,5 +68,29 @@
         <MODULEPATH id="juce_gui_extra" path="~/JUCE/modules"/>
       </MODULEPATHS>
     </XCODE_MAC>
+    <XCODE_IPHONE targetFolder="Builds/iOS" customXcodeResourceFolders="/Users/jade/JUCEProjects/ModularRadio/Resources"
+                  iosDeploymentTarget="13.0" iPad="1" iPhone="0" iosScreenOrientation="UIInterfaceOrientationPortrait,UIInterfaceOrientationLandscapeLeft,UIInterfaceOrientationLandscapeRight"
+                  customPListEntry="&lt;key&gt;UIRequiredDeviceCapabilities&lt;/key&gt;&#10;&lt;array&gt;&#10;&lt;string&gt;arm64&lt;/string&gt;&#10;&lt;/array&gt;"
+                  smallIcon="ModularRadio.icns" bigIcon="ModularRadio.icns" iosBundleId="com.modularradio.app">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="ModularRadio" iosCodeSigning="1" iosDevelopmentTeam="BV35B44US2"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="ModularRadio" iosCodeSigning="1" iosDevelopmentTeam="BV35B44US2"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="../../JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_dsp" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="~/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="~/JUCE/modules"/>
+      </MODULEPATHS>
+    </XCODE_IPHONE>
   </EXPORTFORMATS>
 </JUCERPROJECT>
