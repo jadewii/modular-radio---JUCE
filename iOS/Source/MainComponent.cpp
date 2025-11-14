@@ -461,9 +461,12 @@ void MainComponent::resized()
     distortionGroup->setBounds(scaleBounds(1030, 280, 360, 200));
     phaserGroup->setBounds(scaleBounds(1030, 500, 360, 200));
 
+    // Don't apply internal scaling - the bounds are already scaled with scaleBounds()
+    // This prevents double-scaling of the effect group contents
+
     // Filter type buttons within filter group - positioned ABOVE resonance slider to match macOS
-    auto filterBounds = filterGroup->getLocalBounds();
-    auto buttonSize = 35;  // Bigger buttons to match macOS (was 25x20, now 35x35)
+    // Use original coordinates since the filterGroup itself is already scaled
+    auto buttonSize = 35;  // Original size - no need to scale since parent is already scaled
     auto buttonY = 45;     // Position above RESO slider (which is at y=75)
     auto buttonStartX = 190; // Align with slider position
     auto buttonSpacing = 40; // Space between buttons
@@ -473,6 +476,7 @@ void MainComponent::resized()
     filterBPButton.setBounds(buttonStartX + buttonSpacing * 2, buttonY, buttonSize, buttonSize);
 
     // Master volume - exact macOS positioning (right side, bottom)
+    // Don't apply internal scaling - the bounds are already scaled with scaleBounds()
     volumeKnob->setBounds(scaleBounds(1030, 720, 360, 200));
 
     // Track info - exact macOS positioning
