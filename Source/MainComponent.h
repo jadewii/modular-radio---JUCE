@@ -3,6 +3,8 @@
 #include <JuceHeader.h>
 #include "EffectsProcessor.h"
 #include "ModularRadioLookAndFeel.h"
+#include "DeviceDetection.h"
+#include "AdaptiveLayout.h"
 
 //==============================================================================
 // ResamplingAudioSource wrapper that implements PositionableAudioSource
@@ -184,6 +186,10 @@ private:
     void nextButtonClicked();
     void previousButtonClicked();
     void updateTimeDisplay();
+
+    // Adaptive layout methods
+    void layoutForTablet(juce::Rectangle<int> bounds, float deviceScale);
+    void layoutForPhone(juce::Rectangle<int> bounds, float deviceScale);
 
     // Position persistence COMPLETELY REMOVED - all components are now in FIXED positions
 

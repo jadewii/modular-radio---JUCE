@@ -336,16 +336,37 @@ MainComponent::MainComponent()
     // Start timer - faster for better flashing effect
     startTimer (150);  // Faster timer (150ms for visible flashing)
 
-    // Start with reference size for perfect scaling demonstration
-    setSize (1400, 900);
+    // Initialize device-specific window size
+    auto deviceScale = DeviceDetection::getScaleFactor();
+
+    // Set appropriate window size based on device
+    if (DeviceDetection::isPhone())
+    {
+        setSize(400, 700); // Portrait phone size
+    }
+    else
+    {
+        setSize(1400, 900); // Reference tablet/desktop size
+    }
+
     setAudioChannels (0, 2);
 
-    // Make window resizable so you can simulate different iPad sizes!
+    // Make window resizable for testing different device sizes
     if (auto* window = findParentComponentOfClass<juce::DocumentWindow>())
     {
         window->setResizable (true, true);
-        window->setResizeLimits (700, 450, 2800, 1800);  // Min 50%, Max 200% of reference
+        if (DeviceDetection::isPhone())
+        {
+            window->setResizeLimits (300, 500, 600, 1000); // Phone size limits
+        }
+        else
+        {
+            window->setResizeLimits (700, 450, 2800, 1800); // Tablet/desktop limits
+        }
     }
+
+    DBG("Initialized for device: " << DeviceDetection::getDeviceString()
+        << " with scale factor: " << deviceScale);
 
     DBG ("MainComponent initialization complete - all components in FIXED positions!");
 
@@ -527,23 +548,52 @@ void MainComponent::resized()
 {
     auto bounds = getLocalBounds();
 
-    // PROPORTIONAL SCALING SYSTEM - maintains exact layout on any screen size
-    // Reference dimensions: 1400x900 (your perfect layout)
+    // Initialize adaptive layout system
+    AdaptiveLayout::initializeForDevice(bounds);
+
+    // Get device type and handle device-specific layouts
+    auto deviceScale = DeviceDetection::getScaleFactor();
+
+    DBG("Device detected: " << DeviceDetection::getDeviceString()
+        << " with scale factor: " << deviceScale);
+
+    // Phone vs Tablet layout
+    if (DeviceDetection::isPhone())
+    {
+        // iPhone layout - simplified, single-page design
+        layoutForPhone(bounds, deviceScale);
+    }
+    else
+    {
+        // iPad/Desktop layout - full modular interface
+        layoutForTablet(bounds, deviceScale);
+    }
+
+    // Debug scaling info
+    DBG("Screen: " << bounds.getWidth() << "x" << bounds.getHeight()
+        << " | Device: " << DeviceDetection::getDeviceString()
+        << " | Scale: " << deviceScale);
+}
+
+void MainComponent::layoutForTablet(juce::Rectangle<int> bounds, float deviceScale)
+{
+    // Use adaptive layout system for tablet/desktop
     const float refWidth = 1400.0f;
     const float refHeight = 900.0f;
 
     // Calculate scale factors
     float scaleX = bounds.getWidth() / refWidth;
     float scaleY = bounds.getHeight() / refHeight;
-
-    // Use the smaller scale to maintain aspect ratio (prevents stretching)
     float scale = juce::jmin(scaleX, scaleY);
+
+    // Apply device-specific scale adjustment
+    scale *= deviceScale;
 
     // Calculate scaled dimensions
     float scaledWidth = refWidth * scale;
     float scaledHeight = refHeight * scale;
 
-    // Center the scaled content if screen is larger than scaled content
+    // Center the scaled content
     float offsetX = (bounds.getWidth() - scaledWidth) / 2;
     float offsetY = (bounds.getHeight() - scaledHeight) / 2;
 
@@ -558,59 +608,105 @@ void MainComponent::resized()
         );
     };
 
-    // SCALED CENTER CALCULATIONS (based on reference 1400x900)
-    auto refCenterX = refWidth / 2;   // 700
-    auto refCenterY = refHeight / 2;  // 450
+    // Note: These could be used for more sophisticated layout later
+    // auto moduleBounds = AdaptiveLayout::getModuleBounds();
+    // auto pitchBounds = AdaptiveLayout::getPitchKnobBounds();
+    // auto transportBounds = AdaptiveLayout::getTransportBounds();
 
-    // Center module bounds (480x640 in reference)
-    auto refModuleX = refCenterX - 240;  // 460
-    auto refModuleY = refCenterY - 320;  // 130
+    // Apply adaptive positioning with device scaling
+    auto refCenterX = refWidth / 2;
+    auto refCenterY = refHeight / 2;
+    auto refModuleX = refCenterX - 240;
+    auto refModuleY = refCenterY - 320;
 
-    // Pitch knob - centered in module (maintains exact relative position)
-    pitchKnob.setBounds (scaleBounds(refModuleX + 123, refModuleY + 153, 234, 234));
+    // Main controls (center module)
+    pitchKnob.setBounds(scaleBounds(refModuleX + 123, refModuleY + 153, 234, 234));
+    fxToggleButton.setBounds(scaleBounds(refModuleX + 80, refModuleY + 415, 40, 40));
+    ledIndicator.setBounds(scaleBounds(refModuleX + 425, refModuleY + 155, 22, 22));
 
-    // FX button - exact relative position on module
-    fxToggleButton.setBounds (scaleBounds(refModuleX + 80, refModuleY + 415, 40, 40));
-
-    // LED indicator - exact relative position on module
-    ledIndicator.setBounds (scaleBounds(refModuleX + 425, refModuleY + 155, 22, 22));
-
-    // Transport controls - maintain exact relative positions
+    // Transport controls
     auto refTransportY = refModuleY + 484;
     auto refPlayButtonHeight = 60;
     auto refPrevNextY = refTransportY + (refPlayButtonHeight - 50) / 2;
 
-    previousButton.setBounds (scaleBounds(refCenterX - 110, refPrevNextY, 50, 50));
-    playButton.setBounds (scaleBounds(refCenterX - 30, refTransportY, 60, 60));
-    nextButton.setBounds (scaleBounds(refCenterX + 60, refPrevNextY, 50, 50));
-    stopButton.setBounds (0, 0, 0, 0); // Keep hidden
+    previousButton.setBounds(scaleBounds(refCenterX - 110, refPrevNextY, 50, 50));
+    playButton.setBounds(scaleBounds(refCenterX - 30, refTransportY, 60, 60));
+    nextButton.setBounds(scaleBounds(refCenterX + 60, refPrevNextY, 50, 50));
+    stopButton.setBounds(0, 0, 0, 0); // Keep hidden
 
-    // RESET button - exact relative position
-    resetButton.setBounds (scaleBounds(refCenterX + 120, refTransportY + 10, 80, 40));
+    resetButton.setBounds(scaleBounds(refCenterX + 120, refTransportY + 10, 80, 40));
 
-    // Track info - exact relative position
+    // Track info
     auto refLabelAreaY = refModuleY + 590;
-    trackNameLabel.setBounds (scaleBounds(refModuleX + 60, refLabelAreaY, 360, 30));
+    trackNameLabel.setBounds(scaleBounds(refModuleX + 60, refLabelAreaY, 360, 30));
 
-    // Effect knob groups - PROPORTIONALLY SCALED positions (maintains your perfect layout)
-    // Left side - exact same relative positions
-    filterGroup->setBounds (scaleBounds(10, 60, 360, 200));
-    delayGroup->setBounds (scaleBounds(10, 280, 360, 200));
-    reverbGroup->setBounds (scaleBounds(10, 500, 360, 200));
-    timeGroup->setBounds (scaleBounds(10, 720, 360, 200));
+    // Effect knob groups - use adaptive positioning
+    float effectScale = scale * 1.2f; // Make effects slightly larger on larger devices
 
-    // Right side - exact same relative positions
-    chorusGroup->setBounds (scaleBounds(1030, 60, 360, 200));
-    distortionGroup->setBounds (scaleBounds(1030, 280, 360, 200));
-    phaserGroup->setBounds (scaleBounds(1030, 500, 360, 200));
-    volumeKnob->setBounds (scaleBounds(1030, 720, 360, 200));
+    // Left side effects
+    filterGroup->setBounds(scaleBounds(10, 60, 360, 200));
+    delayGroup->setBounds(scaleBounds(10, 280, 360, 200));
+    reverbGroup->setBounds(scaleBounds(10, 500, 360, 200));
+    timeGroup->setBounds(scaleBounds(10, 720, 360, 200));
 
-    // Filter type buttons - now handled by draggable group
-    // (No manual positioning needed - draggable group manages its own position)
+    // Right side effects
+    chorusGroup->setBounds(scaleBounds(1030, 60, 360, 200));
+    distortionGroup->setBounds(scaleBounds(1030, 280, 360, 200));
+    phaserGroup->setBounds(scaleBounds(1030, 500, 360, 200));
+    volumeKnob->setBounds(scaleBounds(1030, 720, 360, 200));
+}
 
-    // Debug scaling info
-    DBG("Screen: " << bounds.getWidth() << "x" << bounds.getHeight()
-        << " | Scale: " << scale << " | Scaled: " << scaledWidth << "x" << scaledHeight);
+void MainComponent::layoutForPhone(juce::Rectangle<int> bounds, float deviceScale)
+{
+    // iPhone layout - simplified design focused on essential controls
+    auto centerX = bounds.getCentreX();
+    auto centerY = bounds.getCentreY();
+
+    float phoneScale = 0.6f * deviceScale; // Smaller scale for phone
+
+    // Simplified module in center (smaller)
+    auto moduleWidth = static_cast<int>(300 * phoneScale);
+    auto moduleHeight = static_cast<int>(400 * phoneScale);
+    auto moduleX = centerX - moduleWidth / 2;
+    auto moduleY = centerY - moduleHeight / 2 - 50; // Offset up slightly
+
+    // Main pitch knob (prominent)
+    auto knobSize = static_cast<int>(120 * phoneScale);
+    pitchKnob.setBounds(centerX - knobSize/2, moduleY + 20, knobSize, knobSize);
+
+    // Transport controls below (larger for touch)
+    auto buttonSize = static_cast<int>(50 * phoneScale);
+    auto transportY = moduleY + moduleHeight - 80;
+
+    previousButton.setBounds(centerX - buttonSize*3/2 - 10, transportY, buttonSize, buttonSize);
+    playButton.setBounds(centerX - buttonSize/2, transportY - 5, buttonSize + 10, buttonSize + 10);
+    nextButton.setBounds(centerX + buttonSize/2 + 10, transportY, buttonSize, buttonSize);
+
+    // FX and LED indicators (smaller)
+    fxToggleButton.setBounds(moduleX + 10, moduleY + 10, 30, 30);
+    ledIndicator.setBounds(moduleX + moduleWidth - 40, moduleY + 10, 15, 15);
+
+    // Track name below transport
+    trackNameLabel.setBounds(moduleX - 50, transportY + 70, moduleWidth + 100, 25);
+
+    // Reset button (smaller, top right)
+    resetButton.setBounds(bounds.getWidth() - 70, 20, 50, 30);
+
+    // Hide effect groups on phone or make them very small/overlaid
+    // For now, position them off-screen to hide them
+    filterGroup->setBounds(-1000, -1000, 1, 1);
+    delayGroup->setBounds(-1000, -1000, 1, 1);
+    reverbGroup->setBounds(-1000, -1000, 1, 1);
+    timeGroup->setBounds(-1000, -1000, 1, 1);
+    chorusGroup->setBounds(-1000, -1000, 1, 1);
+    distortionGroup->setBounds(-1000, -1000, 1, 1);
+    phaserGroup->setBounds(-1000, -1000, 1, 1);
+    volumeKnob->setBounds(-1000, -1000, 1, 1);
+
+    // Hide stop button
+    stopButton.setBounds(0, 0, 0, 0);
+
+    DBG("iPhone layout applied with scale: " << phoneScale);
 }
 
 void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
@@ -688,21 +784,33 @@ void MainComponent::loadTracksFromFolder (const juce::File& folder)
 {
     trackFiles.clear();
 
+    DBG ("Loading tracks from folder: " + folder.getFullPathName());
+    DBG ("Folder exists: " + juce::String(folder.exists() ? "true" : "false"));
+    DBG ("Folder is directory: " + juce::String(folder.isDirectory() ? "true" : "false"));
+
     juce::Array<juce::File> files;
     folder.findChildFiles (files, juce::File::findFiles, true, "*.mp3;*.wav;*.aiff;*.aif;*.m4a;*.flac");
 
+    DBG ("Found " + juce::String(files.size()) + " files in folder scan");
+
+    // Log first few files for debugging
+    for (int i = 0; i < juce::jmin(5, files.size()); ++i)
+    {
+        DBG ("File " + juce::String(i) + ": " + files[i].getFullPathName());
+    }
+
     trackFiles.addArray (files);
 
-    // SHUFFLE tracks randomly on every startup for randomized playback order
+    // SHUFFLE tracks randomly on every startup for randomized playbook order
     if (!trackFiles.isEmpty())
     {
         std::random_device rd;
         std::mt19937 rng (rd());
         std::shuffle (trackFiles.begin(), trackFiles.end(), rng);
-        DBG ("Shuffled " << trackFiles.size() << " tracks into random order");
+        DBG ("Shuffled " + juce::String(trackFiles.size()) + " tracks into random order");
     }
 
-    DBG ("Loaded " << trackFiles.size() << " tracks");
+    DBG ("Final loaded track count: " + juce::String(trackFiles.size()));
 
     if (!trackFiles.isEmpty())
         loadTrack (0);
@@ -710,21 +818,62 @@ void MainComponent::loadTracksFromFolder (const juce::File& folder)
 
 void MainComponent::loadBundledMusic()
 {
-    auto resourcesFolder = juce::File::getSpecialLocation (juce::File::currentApplicationFile)
+    auto appFile = juce::File::getSpecialLocation (juce::File::currentApplicationFile);
+    DBG ("App location: " + appFile.getFullPathName());
+
+    auto resourcesFolder = appFile
                                .getChildFile ("Contents")
                                .getChildFile ("Resources")
                                .getChildFile ("Resources")
                                .getChildFile ("Modular Radio - All Tracks");
 
+    DBG ("Looking for music folder at: " + resourcesFolder.getFullPathName());
+
     if (resourcesFolder.exists() && resourcesFolder.isDirectory())
     {
         loadTracksFromFolder (resourcesFolder);
-        DBG ("Loaded bundled music from: " << resourcesFolder.getFullPathName());
+        DBG ("Loaded bundled music from: " + resourcesFolder.getFullPathName());
     }
     else
     {
-        DBG ("Bundled music not found at: " << resourcesFolder.getFullPathName());
-        trackNameLabel.setText ("Music not found in bundle", juce::dontSendNotification);
+        DBG ("Bundled music not found at macOS path, trying iOS path...");
+
+        // Try iOS app bundle structure (single Resources folder)
+        auto iosResourcesFolder = appFile
+                                    .getChildFile ("Resources")
+                                    .getChildFile ("Modular Radio - All Tracks");
+
+        DBG ("Trying iOS path: " + iosResourcesFolder.getFullPathName());
+
+        if (iosResourcesFolder.exists() && iosResourcesFolder.isDirectory())
+        {
+            loadTracksFromFolder (iosResourcesFolder);
+            DBG ("Loaded bundled music from iOS path: " + iosResourcesFolder.getFullPathName());
+        }
+        else
+        {
+            // Try iOS with double Resources path
+            auto iosDoubleResourcesFolder = appFile
+                                            .getChildFile ("Resources")
+                                            .getChildFile ("Resources")
+                                            .getChildFile ("Modular Radio - All Tracks");
+
+            DBG ("Trying iOS double Resources path: " + iosDoubleResourcesFolder.getFullPathName());
+
+            if (iosDoubleResourcesFolder.exists() && iosDoubleResourcesFolder.isDirectory())
+            {
+                loadTracksFromFolder (iosDoubleResourcesFolder);
+                DBG ("Loaded bundled music from iOS double Resources path: " + iosDoubleResourcesFolder.getFullPathName());
+            }
+            else
+            {
+                DBG ("Bundled music not found at any path");
+                DBG ("MacOS path: " + resourcesFolder.getFullPathName());
+                DBG ("iOS path: " + iosResourcesFolder.getFullPathName());
+                DBG ("iOS double Resources path: " + iosDoubleResourcesFolder.getFullPathName());
+                trackNameLabel.setText ("Music not found in bundle", juce::dontSendNotification);
+            }
+        }
     }
 }
 

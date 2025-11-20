@@ -110,7 +110,7 @@
     <OSX/>
   </LIVE_SETTINGS>
   <EXPORTFORMATS>
-    <XCODE_IPHONE targetFolder="Builds/iOS"
+    <XCODE_IPHONE targetFolder="Builds/iOS" customXcodeResourceFolders="/Users/jade/JUCEProjects/ModularRadio_GitHub_Working/Resources"
                   iosDeploymentTarget="13.0" iPad="1" iPhone="1"
                   iosScreenOrientation="UIInterfaceOrientationLandscapeLeft,UIInterfaceOrientationLandscapeRight"
                   iosBundleId="com.jadewii.modularradio.v2"
